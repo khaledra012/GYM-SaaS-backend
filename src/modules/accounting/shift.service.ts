@@ -1,0 +1,227 @@
+﻿import { Op } from "sequelize";
+import sequelize from "../../config/db.config";
+import {
+  AppError,
+  getCurrentDateOnlyInTimezone,
+  normalizeTimezone,
+} from "../../shared";
+import Shift from "./shift.model";
+import { getShiftTotals } from "./accounting-aggregates.util";
+import { centsToMoneyString, moneyToCents, toMoneyString } from "./money.util";
+import { lockCenterRow } from "./center-lock.util";
+
+export interface IShiftSnapshot {
+  id: number;
+  centerId: number;
+  status: "open" | "closed";
+  localDate: string;
+  startingCash: string;
+  expectedEndingCash: string;
+  actualEndingCash: string | null;
+  discrepancy: string | null;
+  openedAt: Date;
+  closedAt: Date | null;
+  openedBy: number;
+  closedBy: number | null;
+  totals: {
+    totalIn: string;
+    totalOut: string;
+    net: string;
+  };
+  currentExpectedCash: string;
+}
+
+interface IOpenShiftInput {
+  centerId: number;
+  openedBy: number;
+  startingCash: number;
+  centerTimezone?: string;
+}
+
+interface ICloseShiftInput {
+  centerId: number;
+  closedBy: number;
+  actualEndingCash: number;
+}
+
+interface IListShiftsInput {
+  centerId: number;
+  status?: "open" | "closed";
+  date?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  page: number;
+  limit: number;
+}
+
+class ShiftService {
+  private mapShift(
+    shift: Shift,
+    totals: { totalIn: string; totalOut: string; net: string },
+  ): IShiftSnapshot {
+    const currentExpectedCash = centsToMoneyString(
+      moneyToCents(shift.startingCash) +
+        moneyToCents(totals.totalIn) -
+        moneyToCents(totals.totalOut),
+    );
+
+    return {
+      id: shift.id,
+      centerId: shift.centerId,
+      status: shift.status,
+      localDate: shift.localDate,
+      startingCash: shift.startingCash,
+      expectedEndingCash: shift.expectedEndingCash,
+      actualEndingCash: shift.actualEndingCash,
+      discrepancy: shift.discrepancy,
+      openedAt: shift.openedAt,
+      closedAt: shift.closedAt,
+      openedBy: shift.openedBy,
+      closedBy: shift.closedBy,
+      totals,
+      currentExpectedCash,
+    };
+  }
+
+  public async openShift(input: IOpenShiftInput): Promise<IShiftSnapshot> {
+    return sequelize.transaction(async (transaction) => {
+      await lockCenterRow(input.centerId, transaction);
+
+      const existingOpenShift = await Shift.findOne({
+        where: { centerId: input.centerId, status: "open" },
+        lock: true,
+        transaction,
+      });
+
+      if (existingOpenShift) {
+        throw new AppError("يوجد وردية مفتوحة بالفعل لهذا المركز", 400);
+      }
+
+      const now = new Date();
+      const timezone = normalizeTimezone(input.centerTimezone);
+      const localDate = getCurrentDateOnlyInTimezone(timezone);
+      const startingCash = toMoneyString(input.startingCash);
+
+      const shift = await Shift.create(
+        {
+          centerId: input.centerId,
+          status: "open",
+          localDate,
+          startingCash,
+          expectedEndingCash: startingCash,
+          actualEndingCash: null,
+          discrepancy: null,
+          openedAt: now,
+          closedAt: null,
+          openedBy: input.openedBy,
+          closedBy: null,
+        },
+        { transaction },
+      );
+
+      return this.mapShift(shift, {
+        totalIn: "0.00",
+        totalOut: "0.00",
+        net: "0.00",
+      });
+    });
+  }
+
+  public async listShifts(input: IListShiftsInput) {
+    const whereClause: any = { centerId: input.centerId };
+    if (input.status) {
+      whereClause.status = input.status;
+    }
+
+    if (input.date) {
+      whereClause.localDate = input.date;
+    } else if (input.dateFrom || input.dateTo) {
+      if (input.dateFrom && input.dateTo) {
+        whereClause.localDate = { [Op.between]: [input.dateFrom, input.dateTo] };
+      } else if (input.dateFrom) {
+        whereClause.localDate = { [Op.gte]: input.dateFrom };
+      } else if (input.dateTo) {
+        whereClause.localDate = { [Op.lte]: input.dateTo };
+      }
+    }
+
+    const offset = (input.page - 1) * input.limit;
+
+    const { rows, count } = await Shift.findAndCountAll({
+      where: whereClause,
+      order: [["openedAt", "DESC"]],
+      limit: input.limit,
+      offset,
+    });
+
+    const data = await Promise.all(
+      rows.map(async (shift, index) => {
+        const totals = await getShiftTotals(input.centerId, shift.id);
+        return {
+          ...this.mapShift(shift, totals),
+          displayNumber: offset + index + 1,
+        };
+      }),
+    );
+
+    return {
+      total: count,
+      page: input.page,
+      limit: input.limit,
+      totalPages: Math.ceil(count / input.limit),
+      data,
+    };
+  }
+
+  public async getCurrentShift(centerId: number): Promise<IShiftSnapshot | null> {
+    const shift = await Shift.findOne({
+      where: { centerId, status: "open" },
+      order: [["openedAt", "DESC"]],
+    });
+
+    if (!shift) return null;
+
+    const totals = await getShiftTotals(centerId, shift.id);
+    return this.mapShift(shift, totals);
+  }
+
+  public async closeShift(input: ICloseShiftInput): Promise<IShiftSnapshot> {
+    return sequelize.transaction(async (transaction) => {
+      await lockCenterRow(input.centerId, transaction);
+
+      const shift = await Shift.findOne({
+        where: { centerId: input.centerId, status: "open" },
+        lock: true,
+        transaction,
+      });
+
+      if (!shift) {
+        throw new AppError("لا يوجد وردية مفتوحة لإغلاقها", 400);
+      }
+
+      const totals = await getShiftTotals(input.centerId, shift.id, transaction);
+
+      const expectedEndingCashCents =
+        moneyToCents(shift.startingCash) +
+        moneyToCents(totals.totalIn) -
+        moneyToCents(totals.totalOut);
+
+      const actualEndingCash = toMoneyString(input.actualEndingCash);
+      const discrepancyCents =
+        moneyToCents(actualEndingCash) - expectedEndingCashCents;
+
+      shift.status = "closed";
+      shift.expectedEndingCash = centsToMoneyString(expectedEndingCashCents);
+      shift.actualEndingCash = actualEndingCash;
+      shift.discrepancy = centsToMoneyString(discrepancyCents);
+      shift.closedAt = new Date();
+      shift.closedBy = input.closedBy;
+
+      await shift.save({ transaction });
+
+      return this.mapShift(shift, totals);
+    });
+  }
+}
+
+export const shiftService = new ShiftService();
