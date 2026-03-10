@@ -1,4 +1,4 @@
-ï»¿import { Response } from "express";
+import { Response } from "express";
 import { authService } from "./auth.service";
 import { catchAsync, AuthRequest } from "../../shared";
 import {
@@ -12,10 +12,13 @@ export const signup = catchAsync(async (req: AuthRequest, res: Response) => {
   const data = (req as any).validated.body as ISignupDTO;
 
   const center = await authService.signup(data);
+  res.once("finish", () => {
+    authService.queueWelcomeEmail({ email: center.email, name: center.name });
+  });
 
   return res.status(201).json({
-    status: "Ù†Ø¬Ø§Ø­",
-    message: "ØªÙ… Ø¥Ù†Ø´Ø§Ø¡ Ø§Ù„Ø­Ø³Ø§Ø¨ Ø¨Ù†Ø¬Ø§Ø­",
+    status: "äÌÇÍ",
+    message: "Êã ÅäÔÇÁ ÇáÍÓÇÈ ÈäÌÇÍ",
     data: center,
   });
 });
@@ -26,8 +29,8 @@ export const login = catchAsync(async (req: AuthRequest, res: Response) => {
   const result = await authService.login(email, password);
 
   return res.status(200).json({
-    status: "Ù†Ø¬Ø§Ø­",
-    message: "ØªÙ… ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø¯Ø®ÙˆÙ„ Ø¨Ù†Ø¬Ø§Ø­",
+    status: "äÌÇÍ",
+    message: "Êã ÊÓÌíá ÇáÏÎæá ÈäÌÇÍ",
     data: result,
   });
 });
@@ -36,11 +39,14 @@ export const forgotPassword = catchAsync(
   async (req: AuthRequest, res: Response) => {
     const { email } = (req as any).validated.body as IForgotPasswordDTO;
 
-    await authService.forgotPassword(email);
+    const resetEmailTask = await authService.forgotPassword(email);
+    res.once("finish", () => {
+      authService.queuePasswordResetEmail(resetEmailTask);
+    });
 
     return res.status(200).json({
-      status: "Ù†Ø¬Ø§Ø­",
-      message: "ØªÙ… Ø¥Ø±Ø³Ø§Ù„ Ø±Ù…Ø² Ø§Ø³ØªØ¹Ø§Ø¯Ø© ÙƒÙ„Ù…Ø© Ø§Ù„Ù…Ø±ÙˆØ±",
+      status: "äÌÇÍ",
+      message: "Êã ÇÓÊáÇã ÇáØáÈ æÓíÊã ÅÑÓÇá ÑÇÈØ ÇÓÊÚÇÏÉ ßáãÉ ÇáãÑæÑ",
     });
   },
 );
@@ -53,8 +59,8 @@ export const resetPassword = catchAsync(
     await authService.resetPassword(token, password);
 
     return res.status(200).json({
-      status: "Ù†Ø¬Ø§Ø­",
-      message: "ØªÙ… ØªØ­Ø¯ÙŠØ« ÙƒÙ„Ù…Ø© Ø§Ù„Ù…Ø±ÙˆØ± Ø¨Ù†Ø¬Ø§Ø­ØŒ ÙŠÙ…ÙƒÙ†Ùƒ ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø¯Ø®ÙˆÙ„ Ø§Ù„Ø¢Ù†",
+      status: "äÌÇÍ",
+      message: "Êã ÊÍÏíË ßáãÉ ÇáãÑæÑ ÈäÌÇÍ¡ íãßäß ÊÓÌíá ÇáÏÎæá ÇáÂä",
     });
   },
 );

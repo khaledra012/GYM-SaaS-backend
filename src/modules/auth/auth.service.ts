@@ -1,4 +1,4 @@
-ï»¿import Center from "./auth.model";
+import Center from "./auth.model";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
@@ -6,7 +6,64 @@ import { Op } from "sequelize";
 import { AppError, Email, logger, normalizeTimezone } from "../../shared";
 import { ISignupDTO } from "./auth.schema";
 
+interface IEmailRecipient {
+  email: string;
+  name: string;
+}
+
+interface IQueuedPasswordResetEmailInput {
+  centerId: number;
+  recipient: IEmailRecipient;
+  resetURL: string;
+}
+
 class AuthService {
+  private queueEmailTask(task: () => Promise<void>) {
+    setImmediate(() => {
+      void task().catch((error) => {
+        logger.error("İÔá ÊäİíĞ ãåãÉ ÅÑÓÇá ÇáÅíãíá İí ÇáÎáİíÉ", {
+          error: String(error),
+        });
+      });
+    });
+  }
+
+  queueWelcomeEmail(recipient: IEmailRecipient) {
+    this.queueEmailTask(async () => {
+      await new Email(recipient).sendWelcome();
+    });
+  }
+
+  queuePasswordResetEmail(input: IQueuedPasswordResetEmailInput) {
+    this.queueEmailTask(async () => {
+      try {
+        await new Email(input.recipient, input.resetURL).sendPasswordReset();
+      } catch (error) {
+        logger.error("İÔá ÅÑÓÇá Åíãíá ÇÓÊÚÇÏÉ ßáãÉ ÇáãÑæÑ", {
+          centerId: input.centerId,
+          error: String(error),
+        });
+
+        try {
+          await Center.update(
+            {
+              passwordResetToken: null,
+              passwordResetExpires: null,
+            },
+            {
+              where: { id: input.centerId },
+            },
+          );
+        } catch (clearError) {
+          logger.error("İÔá ÅáÛÇÁ Êæßä ÇÓÊÚÇÏÉ ßáãÉ ÇáãÑæÑ ÈÚÏ ÊÚĞÑ ÇáÅÑÓÇá", {
+            centerId: input.centerId,
+            error: String(clearError),
+          });
+        }
+      }
+    });
+  }
+
   async signup(data: ISignupDTO) {
     const hashedPassword = await bcrypt.hash(data.password, 10);
 
@@ -20,12 +77,6 @@ class AuthService {
 
     const newCenter = await Center.create(safeData);
 
-    try {
-      await new Email(newCenter).sendWelcome();
-    } catch (err) {
-      logger.error("Failed to send welcome email", { error: String(err) });
-    }
-
     const { password: _, ...centerData } = newCenter.toJSON();
     return centerData;
   }
@@ -33,7 +84,7 @@ class AuthService {
   async login(email: string, password: string) {
     const center = await Center.findOne({ where: { email } });
     if (!center || !(await bcrypt.compare(password, center.password))) {
-      throw new AppError("Ø¨ÙŠØ§Ù†Ø§Øª Ø§Ù„Ø¯Ø®ÙˆÙ„ ØºÙŠØ± ØµØ­ÙŠØ­Ø©", 401);
+      throw new AppError("ÈíÇäÇÊ ÇáÏÎæá ÛíÑ ÕÍíÍÉ", 401);
     }
 
     const token = jwt.sign({ id: center.id }, process.env.JWT_SECRET as string, {
@@ -56,10 +107,10 @@ class AuthService {
     };
   }
 
-  async forgotPassword(email: string) {
+  async forgotPassword(email: string): Promise<IQueuedPasswordResetEmailInput> {
     const center = await Center.findOne({ where: { email } });
     const frontendUrl = process.env.FRONTEND_URL;
-    if (!center) throw new AppError("Ù„Ø§ ÙŠÙˆØ¬Ø¯ Ù…Ø³ØªØ®Ø¯Ù… Ø¨Ù‡Ø°Ø§ Ø§Ù„Ø¨Ø±ÙŠØ¯", 404);
+    if (!center) throw new AppError("áÇ íæÌÏ ãÓÊÎÏã ÈåĞÇ ÇáÈÑíÏ", 404);
 
     const resetToken = crypto.randomBytes(32).toString("hex");
     center.passwordResetToken = crypto
@@ -71,14 +122,14 @@ class AuthService {
     await center.save();
     const resetURL = `${frontendUrl}/reset-password/${resetToken}`;
 
-    try {
-      await new Email(center, resetURL).sendPasswordReset();
-    } catch {
-      center.passwordResetToken = null;
-      center.passwordResetExpires = null;
-      await center.save();
-      throw new AppError("Ø­Ø¯Ø« Ø®Ø·Ø£ ÙÙŠ Ø¥Ø±Ø³Ø§Ù„ Ø§Ù„Ø¥ÙŠÙ…ÙŠÙ„ØŒ Ø­Ø§ÙˆÙ„ Ù„Ø§Ø­Ù‚Ø§Ù‹", 500);
-    }
+    return {
+      centerId: center.id,
+      recipient: {
+        email: center.email,
+        name: center.name,
+      },
+      resetURL,
+    };
   }
 
   async resetPassword(token: string, newPass: string) {
@@ -90,7 +141,7 @@ class AuthService {
       },
     });
 
-    if (!center) throw new AppError("Ø§Ù„ØªÙˆÙƒÙ† ØºÙŠØ± ØµØ§Ù„Ø­ Ø£Ùˆ Ø§Ù†ØªÙ‡Ù‰", 400);
+    if (!center) throw new AppError("ÇáÊæßä ÛíÑ ÕÇáÍ Ãæ ÇäÊåì", 400);
 
     center.password = await bcrypt.hash(newPass, 10);
     center.passwordResetToken = null;
