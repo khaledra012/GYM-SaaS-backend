@@ -17,8 +17,9 @@ export const signup = catchAsync(async (req: AuthRequest, res: Response) => {
   });
 
   return res.status(201).json({
-    status: "‰Ã«Õ",
-    message: " „ ≈‰‘«¡ «·Õ”«» »‰Ã«Õ",
+    status: "\u0646\u062c\u0627\u062d",
+    message:
+      "\u062a\u0645 \u0625\u0646\u0634\u0627\u0621 \u0627\u0644\u062d\u0633\u0627\u0628 \u0628\u0646\u062c\u0627\u062d",
     data: center,
   });
 });
@@ -29,8 +30,9 @@ export const login = catchAsync(async (req: AuthRequest, res: Response) => {
   const result = await authService.login(email, password);
 
   return res.status(200).json({
-    status: "‰Ã«Õ",
-    message: " „  ”ÃÌ· «·œŒÊ· »‰Ã«Õ",
+    status: "\u0646\u062c\u0627\u062d",
+    message:
+      "\u062a\u0645 \u062a\u0633\u062c\u064a\u0644 \u0627\u0644\u062f\u062e\u0648\u0644 \u0628\u0646\u062c\u0627\u062d",
     data: result,
   });
 });
@@ -45,8 +47,9 @@ export const forgotPassword = catchAsync(
     });
 
     return res.status(200).json({
-      status: "‰Ã«Õ",
-      message: " „ «” ·«„ «·ÿ·» Ê”Ì „ ≈—”«· —«»ÿ «” ⁄«œ… ﬂ·„… «·„—Ê—",
+      status: "\u0646\u062c\u0627\u062d",
+      message:
+        "\u062a\u0645 \u0627\u0633\u062a\u0644\u0627\u0645 \u0627\u0644\u0637\u0644\u0628 \u0648\u0633\u064a\u062a\u0645 \u0625\u0631\u0633\u0627\u0644 \u0631\u0627\u0628\u0637 \u0627\u0633\u062a\u0639\u0627\u062f\u0629 \u0643\u0644\u0645\u0629 \u0627\u0644\u0645\u0631\u0648\u0631",
     });
   },
 );
@@ -59,8 +62,9 @@ export const resetPassword = catchAsync(
     await authService.resetPassword(token, password);
 
     return res.status(200).json({
-      status: "‰Ã«Õ",
-      message: " „  ÕœÌÀ ﬂ·„… «·„—Ê— »‰Ã«Õ° Ì„ﬂ‰ﬂ  ”ÃÌ· «·œŒÊ· «·¬‰",
+      status: "\u0646\u062c\u0627\u062d",
+      message:
+        "\u062a\u0645 \u062a\u062d\u062f\u064a\u062b \u0643\u0644\u0645\u0629 \u0627\u0644\u0645\u0631\u0648\u0631 \u0628\u0646\u062c\u0627\u062d\u060c \u064a\u0645\u0643\u0646\u0643 \u062a\u0633\u062c\u064a\u0644 \u0627\u0644\u062f\u062e\u0648\u0644 \u0627\u0644\u0622\u0646",
     });
   },
 );

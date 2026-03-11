@@ -22,12 +22,24 @@ interface IQueuedPasswordResetEmailInput {
   resetURL: string;
 }
 
+interface IErrorMeta {
+  name?: unknown;
+  code?: unknown;
+  response?: unknown;
+  command?: unknown;
+}
+
 class AuthService {
   private queueEmailTask(task: () => Promise<void>) {
     setImmediate(() => {
-      void task().catch((error) => {
+      void task().catch((error: unknown) => {
+        const meta = (error || {}) as IErrorMeta;
         logger.error("فشل تنفيذ مهمة إرسال الإيميل في الخلفية", {
           error: String(error),
+          name: typeof meta.name === "string" ? meta.name : undefined,
+          code: typeof meta.code === "string" ? meta.code : undefined,
+          response: typeof meta.response === "string" ? meta.response : undefined,
+          command: typeof meta.command === "string" ? meta.command : undefined,
         });
       });
     });
@@ -43,10 +55,15 @@ class AuthService {
     this.queueEmailTask(async () => {
       try {
         await new Email(input.recipient, input.resetURL).sendPasswordReset();
-      } catch (error) {
+      } catch (error: unknown) {
+        const meta = (error || {}) as IErrorMeta;
         logger.error("فشل إرسال إيميل استعادة كلمة المرور", {
           centerId: input.centerId,
           error: String(error),
+          name: typeof meta.name === "string" ? meta.name : undefined,
+          code: typeof meta.code === "string" ? meta.code : undefined,
+          response: typeof meta.response === "string" ? meta.response : undefined,
+          command: typeof meta.command === "string" ? meta.command : undefined,
         });
 
         try {
@@ -172,4 +189,3 @@ class AuthService {
 }
 
 export const authService = new AuthService();
-

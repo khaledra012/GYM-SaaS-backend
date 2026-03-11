@@ -74,7 +74,7 @@ class MemberService {
         includetext: false,
       });
     } catch {
-      throw new AppError(" ⁄–—  Ê·Ìœ »«—ﬂÊœ «·⁄÷Ê", 500);
+      throw new AppError("\u062a\u0639\u0630\u0631 \u062a\u0648\u0644\u064a\u062f \u0628\u0627\u0631\u0643\u0648\u062f \u0627\u0644\u0639\u0636\u0648", 500);
     }
   }
 
@@ -141,7 +141,7 @@ class MemberService {
       where: { phone: data.phone, centerId },
     });
     if (existingMember) {
-      throw new AppError("—ﬁ„ «·Â« › „”Ã· ·„‘ —ﬂ ¬Œ— ›Ì «·„—ﬂ“", 400);
+      throw new AppError("\u0631\u0642\u0645 \u0627\u0644\u0647\u0627\u062a\u0641 \u0645\u0633\u062c\u0644 \u0644\u0645\u0634\u062a\u0631\u0643 \u0622\u062e\u0631 \u0641\u064a \u0627\u0644\u0645\u0631\u0643\u0632", 400);
     }
 
     const code = await this.generateUniqueCode(centerId);
@@ -251,7 +251,7 @@ class MemberService {
   public async getMemberById(id: number, centerId: number): Promise<Member> {
     const member = await Member.findOne({ where: { id, centerId } });
     if (!member) {
-      throw new AppError("«·„‘ —ﬂ €Ì— „ÊÃÊœ", 404);
+      throw new AppError("\u0627\u0644\u0645\u0634\u062a\u0631\u0643 \u063a\u064a\u0631 \u0645\u0648\u062c\u0648\u062f", 404);
     }
 
     return member;
@@ -276,7 +276,7 @@ class MemberService {
       const existing = await Member.findOne({
         where: { phone: data.phone, centerId },
       });
-      if (existing) throw new AppError("—ﬁ„ «·Â« › „” Œœ„ »«·›⁄·", 400);
+      if (existing) throw new AppError("\u0631\u0642\u0645 \u0627\u0644\u0647\u0627\u062a\u0641 \u0645\u0633\u062a\u062e\u062f\u0645 \u0628\u0627\u0644\u0641\u0639\u0644", 400);
     }
 
     const safeUpdateData: Partial<MemberCreationAttributes> = {};
