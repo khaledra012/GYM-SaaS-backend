@@ -11,6 +11,7 @@ import { registerPlanModule } from "./modules/plans";
 import { registerSubscriptionModule } from "./modules/subscriptions";
 import { registerCheckinModule } from "./modules/checkins";
 import { registerAccountingModule } from "./modules/accounting";
+import { registerPlatformAdminModule } from "./modules/platform-admin";
 
 const app: Application = express();
 
@@ -43,6 +44,7 @@ registerPlanModule(app);
 registerSubscriptionModule(app);
 registerCheckinModule(app);
 registerAccountingModule(app);
+registerPlatformAdminModule(app);
 
 // 404 catch-all
 app.use((req: Request, res: Response, next: NextFunction) => {
@@ -53,5 +55,4 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 app.use(globalErrorHandler);
 
 export default app;
-
 

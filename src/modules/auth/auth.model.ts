@@ -1,6 +1,8 @@
 ﻿import { DataTypes, Model, Optional } from "sequelize";
 import sequelize from "../../config/db.config";
 
+export type CenterBillingStatus = "trial" | "subscribed" | "unsubscribed";
+
 export interface CenterAttributes {
   id: number;
   name: string;
@@ -8,6 +10,9 @@ export interface CenterAttributes {
   password?: string;
   phone?: string;
   timezone: string;
+  billingStatus: CenterBillingStatus;
+  trialStartedAt?: Date | null;
+  trialEndsAt?: Date | null;
   passwordResetToken?: string | null;
   passwordResetExpires?: Date | null;
   createdAt?: Date;
@@ -27,6 +32,9 @@ class Center
   public password!: string;
   public phone!: string;
   public timezone!: string;
+  public billingStatus!: CenterBillingStatus;
+  public trialStartedAt!: Date | null;
+  public trialEndsAt!: Date | null;
   public passwordResetToken!: string | null;
   public passwordResetExpires!: Date | null;
   public readonly createdAt!: Date;
@@ -47,6 +55,19 @@ Center.init(
       type: DataTypes.STRING,
       allowNull: false,
       defaultValue: "UTC",
+    },
+    billingStatus: {
+      type: DataTypes.ENUM("trial", "subscribed", "unsubscribed"),
+      allowNull: false,
+      defaultValue: "trial",
+    },
+    trialStartedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    trialEndsAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
     },
     passwordResetToken: { type: DataTypes.STRING, allowNull: true },
     passwordResetExpires: { type: DataTypes.DATE, allowNull: true },

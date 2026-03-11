@@ -35,6 +35,10 @@ import {
   downCreateAccountingTables,
   upCreateAccountingTables,
 } from "./20260308_02_create_accounting_tables";
+import {
+  downAddCenterBillingTrialFields,
+  upAddCenterBillingTrialFields,
+} from "./20260311_01_add_center_billing_trial_fields";
 
 export const migrations: IMigration[] = [
   {
@@ -90,6 +94,12 @@ export const migrations: IMigration[] = [
     name: "Create shifts and transactions tables",
     up: upCreateAccountingTables,
     down: downCreateAccountingTables,
+  },
+  {
+    id: "20260311_01_add_center_billing_trial_fields",
+    name: "Add billing status and trial fields to centers",
+    up: upAddCenterBillingTrialFields,
+    down: downAddCenterBillingTrialFields,
   },
 ];
 

@@ -5,6 +5,7 @@ import { catchAsync } from "../utils/catchAsync";
 import Center from "../../modules/auth/auth.model";
 import { AuthRequest, JwtPayload } from "../types/request.types";
 import { normalizeTimezone } from "../utils/timezone";
+import { ensureCenterBillingStatus } from "../../modules/auth/center-billing.util";
 
 export const protect = catchAsync(
   async (req: AuthRequest, _res: Response, next: NextFunction) => {
@@ -28,8 +29,20 @@ export const protect = catchAsync(
       return next(new AppError("هذا الحساب لم يعد متاحًا", 401));
     }
 
+    await ensureCenterBillingStatus(currentCenter);
+
+    if (currentCenter.billingStatus === "unsubscribed") {
+      return next(
+        new AppError(
+          "الحساب غير مفعل حاليًا. يرجى سداد الاشتراك لإعادة التفعيل.",
+          403,
+        ),
+      );
+    }
+
     currentCenter.timezone = normalizeTimezone(currentCenter.timezone);
     req.center = currentCenter;
     next();
   },
 );
+

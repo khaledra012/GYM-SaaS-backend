@@ -1,10 +1,15 @@
-import Center from "./auth.model";
+ï»¿import Center from "./auth.model";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import { Op } from "sequelize";
 import { AppError, Email, logger, normalizeTimezone } from "../../shared";
 import { ISignupDTO } from "./auth.schema";
+import {
+  calculateTrialEndsAt,
+  ensureCenterBillingStatus,
+  getTrialDaysLeft,
+} from "./center-billing.util";
 
 interface IEmailRecipient {
   email: string;
@@ -21,7 +26,7 @@ class AuthService {
   private queueEmailTask(task: () => Promise<void>) {
     setImmediate(() => {
       void task().catch((error) => {
-        logger.error("İÔá ÊäİíĞ ãåãÉ ÅÑÓÇá ÇáÅíãíá İí ÇáÎáİíÉ", {
+        logger.error("ÙØ´Ù„ ØªÙ†ÙÙŠØ° Ù…Ù‡Ù…Ø© Ø¥Ø±Ø³Ø§Ù„ Ø§Ù„Ø¥ÙŠÙ…ÙŠÙ„ ÙÙŠ Ø§Ù„Ø®Ù„ÙÙŠØ©", {
           error: String(error),
         });
       });
@@ -39,7 +44,7 @@ class AuthService {
       try {
         await new Email(input.recipient, input.resetURL).sendPasswordReset();
       } catch (error) {
-        logger.error("İÔá ÅÑÓÇá Åíãíá ÇÓÊÚÇÏÉ ßáãÉ ÇáãÑæÑ", {
+        logger.error("ÙØ´Ù„ Ø¥Ø±Ø³Ø§Ù„ Ø¥ÙŠÙ…ÙŠÙ„ Ø§Ø³ØªØ¹Ø§Ø¯Ø© ÙƒÙ„Ù…Ø© Ø§Ù„Ù…Ø±ÙˆØ±", {
           centerId: input.centerId,
           error: String(error),
         });
@@ -55,7 +60,7 @@ class AuthService {
             },
           );
         } catch (clearError) {
-          logger.error("İÔá ÅáÛÇÁ Êæßä ÇÓÊÚÇÏÉ ßáãÉ ÇáãÑæÑ ÈÚÏ ÊÚĞÑ ÇáÅÑÓÇá", {
+          logger.error("ÙØ´Ù„ Ø¥Ù„ØºØ§Ø¡ ØªÙˆÙƒÙ† Ø§Ø³ØªØ¹Ø§Ø¯Ø© ÙƒÙ„Ù…Ø© Ø§Ù„Ù…Ø±ÙˆØ± Ø¨Ø¹Ø¯ ØªØ¹Ø°Ø± Ø§Ù„Ø¥Ø±Ø³Ø§Ù„", {
             centerId: input.centerId,
             error: String(clearError),
           });
@@ -66,6 +71,7 @@ class AuthService {
 
   async signup(data: ISignupDTO) {
     const hashedPassword = await bcrypt.hash(data.password, 10);
+    const trialStartedAt = new Date();
 
     const safeData = {
       name: data.name,
@@ -73,6 +79,9 @@ class AuthService {
       phone: data.phone,
       password: hashedPassword,
       timezone: normalizeTimezone(data.timezone),
+      billingStatus: "trial" as const,
+      trialStartedAt,
+      trialEndsAt: calculateTrialEndsAt(trialStartedAt),
     };
 
     const newCenter = await Center.create(safeData);
@@ -84,7 +93,16 @@ class AuthService {
   async login(email: string, password: string) {
     const center = await Center.findOne({ where: { email } });
     if (!center || !(await bcrypt.compare(password, center.password))) {
-      throw new AppError("ÈíÇäÇÊ ÇáÏÎæá ÛíÑ ÕÍíÍÉ", 401);
+      throw new AppError("Ø¨ÙŠØ§Ù†Ø§Øª Ø§Ù„Ø¯Ø®ÙˆÙ„ ØºÙŠØ± ØµØ­ÙŠØ­Ø©", 401);
+    }
+
+    await ensureCenterBillingStatus(center);
+
+    if (center.billingStatus === "unsubscribed") {
+      throw new AppError(
+        "Ø§Ù†ØªÙ‡Øª ÙØªØ±Ø© Ø§Ù„ØªØ¬Ø±Ø¨Ø©. ÙŠØ±Ø¬Ù‰ Ø§Ù„ØªÙˆØ§ØµÙ„ Ù…Ø¹ Ø§Ù„Ø¥Ø¯Ø§Ø±Ø© Ù„ØªÙØ¹ÙŠÙ„ Ø§Ù„Ø§Ø´ØªØ±Ø§Ùƒ.",
+        403,
+      );
     }
 
     const token = jwt.sign({ id: center.id }, process.env.JWT_SECRET as string, {
@@ -103,6 +121,9 @@ class AuthService {
         id: center.id,
         name: center.name,
         timezone: normalizeTimezone(center.timezone),
+        billingStatus: center.billingStatus,
+        trialEndsAt: center.trialEndsAt,
+        trialDaysLeft: getTrialDaysLeft(center),
       },
     };
   }
@@ -110,7 +131,7 @@ class AuthService {
   async forgotPassword(email: string): Promise<IQueuedPasswordResetEmailInput> {
     const center = await Center.findOne({ where: { email } });
     const frontendUrl = process.env.FRONTEND_URL;
-    if (!center) throw new AppError("áÇ íæÌÏ ãÓÊÎÏã ÈåĞÇ ÇáÈÑíÏ", 404);
+    if (!center) throw new AppError("Ù„Ø§ ÙŠÙˆØ¬Ø¯ Ù…Ø³ØªØ®Ø¯Ù… Ø¨Ù‡Ø°Ø§ Ø§Ù„Ø¨Ø±ÙŠØ¯", 404);
 
     const resetToken = crypto.randomBytes(32).toString("hex");
     center.passwordResetToken = crypto
@@ -141,7 +162,7 @@ class AuthService {
       },
     });
 
-    if (!center) throw new AppError("ÇáÊæßä ÛíÑ ÕÇáÍ Ãæ ÇäÊåì", 400);
+    if (!center) throw new AppError("Ø§Ù„ØªÙˆÙƒÙ† ØºÙŠØ± ØµØ§Ù„Ø­ Ø£Ùˆ Ø§Ù†ØªÙ‡Ù‰", 400);
 
     center.password = await bcrypt.hash(newPass, 10);
     center.passwordResetToken = null;
@@ -151,3 +172,4 @@ class AuthService {
 }
 
 export const authService = new AuthService();
+
