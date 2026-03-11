@@ -1,4 +1,4 @@
-﻿import bcrypt from "bcryptjs";
+import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { AppError } from "../../shared";
 import {
@@ -7,6 +7,11 @@ import {
   IUpdateCenterBillingStatusInput,
 } from "../auth/auth.facade";
 import { IPlatformAdminLoginDTO } from "./platform-admin.schema";
+
+interface IActivateCenterInput {
+  subscriptionEndsAt?: Date;
+  subscriptionDurationDays?: number;
+}
 
 class PlatformAdminService {
   private getJwtSecret(): string {
@@ -78,12 +83,12 @@ class PlatformAdminService {
   }
 
   async getDashboardSummary() {
-    await authReadFacade.expireDueTrials();
+    await authReadFacade.expireDueBillingStatuses();
     return authReadFacade.getCentersBillingSummary();
   }
 
   async listCenters(input: IListCentersForAdminInput) {
-    await authReadFacade.expireDueTrials();
+    await authReadFacade.expireDueBillingStatuses();
     return authReadFacade.listCentersForAdmin(input);
   }
 
@@ -91,10 +96,12 @@ class PlatformAdminService {
     return authReadFacade.updateCenterBillingStatus(input);
   }
 
-  async activateCenter(centerId: number) {
+  async activateCenter(centerId: number, input?: IActivateCenterInput) {
     return this.updateCenterBillingStatus({
       centerId,
       billingStatus: "subscribed",
+      subscriptionEndsAt: input?.subscriptionEndsAt,
+      subscriptionDurationDays: input?.subscriptionDurationDays,
     });
   }
 
@@ -107,4 +114,3 @@ class PlatformAdminService {
 }
 
 export const platformAdminService = new PlatformAdminService();
-

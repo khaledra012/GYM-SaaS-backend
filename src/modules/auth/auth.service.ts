@@ -1,4 +1,4 @@
-﻿import Center from "./auth.model";
+import Center from "./auth.model";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
@@ -8,6 +8,7 @@ import { ISignupDTO } from "./auth.schema";
 import {
   calculateTrialEndsAt,
   ensureCenterBillingStatus,
+  getSubscriptionDaysLeft,
   getTrialDaysLeft,
 } from "./center-billing.util";
 
@@ -141,6 +142,8 @@ class AuthService {
         billingStatus: center.billingStatus,
         trialEndsAt: center.trialEndsAt,
         trialDaysLeft: getTrialDaysLeft(center),
+        subscriptionEndsAt: center.subscriptionEndsAt,
+        subscriptionDaysLeft: getSubscriptionDaysLeft(center),
       },
     };
   }

@@ -1,4 +1,4 @@
-﻿import Center from "./auth.model";
+import Center from "./auth.model";
 
 export const TRIAL_DAYS = 15;
 
@@ -11,18 +11,31 @@ export const calculateTrialEndsAt = (trialStartedAt: Date): Date => {
 export const ensureCenterBillingStatus = async (
   center: Center,
 ): Promise<Center> => {
-  if (center.billingStatus !== "trial") {
+  if (center.billingStatus === "trial") {
+    if (!center.trialEndsAt) {
+      center.billingStatus = "unsubscribed";
+      await center.save({ validate: false });
+      return center;
+    }
+
+    if (center.trialEndsAt.getTime() <= Date.now()) {
+      center.billingStatus = "unsubscribed";
+      center.trialStartedAt = null;
+      center.trialEndsAt = null;
+      await center.save({ validate: false });
+    }
+
     return center;
   }
 
-  if (!center.trialEndsAt) {
+  if (
+    center.billingStatus === "subscribed" &&
+    center.subscriptionEndsAt &&
+    center.subscriptionEndsAt.getTime() <= Date.now()
+  ) {
     center.billingStatus = "unsubscribed";
-    await center.save({ validate: false });
-    return center;
-  }
-
-  if (center.trialEndsAt.getTime() <= Date.now()) {
-    center.billingStatus = "unsubscribed";
+    center.subscriptionStartedAt = null;
+    center.subscriptionEndsAt = null;
     await center.save({ validate: false });
   }
 
@@ -42,3 +55,15 @@ export const getTrialDaysLeft = (center: Center): number => {
   return Math.ceil(remaining / DAY_MS);
 };
 
+export const getSubscriptionDaysLeft = (center: Center): number => {
+  if (center.billingStatus !== "subscribed" || !center.subscriptionEndsAt) {
+    return 0;
+  }
+
+  const remaining = center.subscriptionEndsAt.getTime() - Date.now();
+  if (remaining <= 0) {
+    return 0;
+  }
+
+  return Math.ceil(remaining / DAY_MS);
+};

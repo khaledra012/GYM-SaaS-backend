@@ -1,4 +1,4 @@
-﻿import { Router } from "express";
+import { Router } from "express";
 import { RateLimitMiddleware, validate } from "../../shared";
 import * as platformAdminController from "./platform-admin.controller";
 import { protectSuperAdmin } from "./platform-admin.guard";
@@ -31,7 +31,7 @@ router.patch(
 
 router.patch(
   "/centers/:centerId/activate",
-  validate(PlatformAdminValidation.centerIdParam),
+  validate(PlatformAdminValidation.activateCenter),
   platformAdminController.activateCenter,
 );
 
@@ -42,4 +42,3 @@ router.patch(
 );
 
 export default router;
-

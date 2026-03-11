@@ -1,4 +1,4 @@
-﻿import { DataTypes, Model, Optional } from "sequelize";
+import { DataTypes, Model, Optional } from "sequelize";
 import sequelize from "../../config/db.config";
 
 export type CenterBillingStatus = "trial" | "subscribed" | "unsubscribed";
@@ -13,6 +13,8 @@ export interface CenterAttributes {
   billingStatus: CenterBillingStatus;
   trialStartedAt?: Date | null;
   trialEndsAt?: Date | null;
+  subscriptionStartedAt?: Date | null;
+  subscriptionEndsAt?: Date | null;
   passwordResetToken?: string | null;
   passwordResetExpires?: Date | null;
   createdAt?: Date;
@@ -35,6 +37,8 @@ class Center
   public billingStatus!: CenterBillingStatus;
   public trialStartedAt!: Date | null;
   public trialEndsAt!: Date | null;
+  public subscriptionStartedAt!: Date | null;
+  public subscriptionEndsAt!: Date | null;
   public passwordResetToken!: string | null;
   public passwordResetExpires!: Date | null;
   public readonly createdAt!: Date;
@@ -69,6 +73,14 @@ Center.init(
       type: DataTypes.DATE,
       allowNull: true,
     },
+    subscriptionStartedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    subscriptionEndsAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
     passwordResetToken: { type: DataTypes.STRING, allowNull: true },
     passwordResetExpires: { type: DataTypes.DATE, allowNull: true },
   },
@@ -79,4 +91,3 @@ Center.init(
 );
 
 export default Center;
-

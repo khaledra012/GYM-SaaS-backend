@@ -1,4 +1,4 @@
-﻿import { IMigration } from "./types";
+import { IMigration } from "./types";
 import {
   downCreateCentersTable,
   upCreateCentersTable,
@@ -39,6 +39,10 @@ import {
   downAddCenterBillingTrialFields,
   upAddCenterBillingTrialFields,
 } from "./20260311_01_add_center_billing_trial_fields";
+import {
+  downAddCenterSubscriptionPeriodFields,
+  upAddCenterSubscriptionPeriodFields,
+} from "./20260311_02_add_center_subscription_period_fields";
 
 export const migrations: IMigration[] = [
   {
@@ -101,5 +105,10 @@ export const migrations: IMigration[] = [
     up: upAddCenterBillingTrialFields,
     down: downAddCenterBillingTrialFields,
   },
+  {
+    id: "20260311_02_add_center_subscription_period_fields",
+    name: "Add subscription period fields to centers",
+    up: upAddCenterSubscriptionPeriodFields,
+    down: downAddCenterSubscriptionPeriodFields,
+  },
 ];
-

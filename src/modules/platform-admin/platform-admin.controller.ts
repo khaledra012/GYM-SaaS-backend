@@ -1,6 +1,7 @@
-﻿import { Request, Response } from "express";
+import { Request, Response } from "express";
 import { catchAsync } from "../../shared";
 import {
+  IActivateCenterDTO,
   IPlatformAdminLoginDTO,
   IListPlatformCentersQuery,
   IUpdateCenterBillingStatusDTO,
@@ -56,6 +57,10 @@ export const updateCenterBillingStatus = catchAsync(
       centerId: params.centerId,
       billingStatus: body.billingStatus,
       trialEndsAt: body.trialEndsAt ? new Date(body.trialEndsAt) : undefined,
+      subscriptionEndsAt: body.subscriptionEndsAt
+        ? new Date(body.subscriptionEndsAt)
+        : undefined,
+      subscriptionDurationDays: body.subscriptionDurationDays,
     });
 
     return res.status(200).json({
@@ -68,8 +73,14 @@ export const updateCenterBillingStatus = catchAsync(
 
 export const activateCenter = catchAsync(async (req: Request, res: Response) => {
   const params = (req as any).validated.params as IUpdateCenterBillingStatusParams;
+  const body = (req as any).validated.body as IActivateCenterDTO;
 
-  const center = await platformAdminService.activateCenter(params.centerId);
+  const center = await platformAdminService.activateCenter(params.centerId, {
+    subscriptionEndsAt: body.subscriptionEndsAt
+      ? new Date(body.subscriptionEndsAt)
+      : undefined,
+    subscriptionDurationDays: body.subscriptionDurationDays,
+  });
 
   return res.status(200).json({
     status: "نجاح",
@@ -89,4 +100,3 @@ export const deactivateCenter = catchAsync(async (req: Request, res: Response) =
     data: center,
   });
 });
-
