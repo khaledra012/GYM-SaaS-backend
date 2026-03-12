@@ -20,7 +20,7 @@ export class RateLimitMiddleware {
   // حماية صارمة لتسجيل الدخول
   public static authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: 5,
+    max: 100,
     message: {
       status: "فشل",
       message: "محاولات تسجيل دخول خاطئة كثيرة، الرجاء الانتظار 15 دقيقة.",
@@ -42,4 +42,3 @@ export class RateLimitMiddleware {
     legacyHeaders: false,
   });
 }
-
