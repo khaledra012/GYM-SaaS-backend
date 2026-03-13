@@ -1,4 +1,4 @@
-import { z } from "zod";
+﻿import { z } from "zod";
 
 const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -83,17 +83,54 @@ export class DebtValidation {
     .int("المبلغ يجب أن يكون رقمًا صحيحًا")
     .min(1, "المبلغ يجب أن يكون أكبر من صفر");
 
+  private static amountSchema = z.coerce
+    .number({ message: "المبلغ يجب أن يكون رقمًا" })
+    .finite("المبلغ غير صالح")
+    .min(0.01, "المبلغ يجب أن يكون أكبر من صفر");
+
+  private static moneyToCents(value: number): number {
+    return Math.round(value * 100);
+  }
+
   public static createDebt = z.object({
-    body: z.object({
-      memberId: memberIdSchema.shape.memberId,
-      title: z
-        .string({ message: "عنوان المديونية مطلوب" })
-        .trim()
-        .min(1, "عنوان المديونية مطلوب")
-        .max(191, "عنوان المديونية طويل جدًا"),
-      note: z.string().trim().max(2000, "الملاحظة طويلة جدًا").optional(),
-      amountCents: DebtValidation.amountCentsSchema,
-    }),
+    body: z
+      .object({
+        memberId: memberIdSchema.shape.memberId,
+        title: z
+          .string({ message: "عنوان المديونية مطلوب" })
+          .trim()
+          .min(1, "عنوان المديونية مطلوب")
+          .max(191, "عنوان المديونية طويل جدًا"),
+        note: z.string().trim().max(2000, "الملاحظة طويلة جدًا").optional(),
+        amountCents: DebtValidation.amountCentsSchema.optional(),
+        amount: DebtValidation.amountSchema.optional(),
+      })
+      .superRefine((data, ctx) => {
+        if (data.amountCents === undefined && data.amount === undefined) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["amountCents"],
+            message: "يجب إرسال amountCents أو amount",
+          });
+          return;
+        }
+
+        if (data.amount !== undefined && data.amountCents !== undefined) {
+          const normalized = DebtValidation.moneyToCents(data.amount);
+          if (Math.abs(normalized - data.amountCents) > 1) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ["amount"],
+              message: "قيمة amount لا تطابق amountCents",
+            });
+          }
+        }
+      })
+      .transform(({ amount, amountCents, ...rest }) => ({
+        ...rest,
+        amountCents:
+          amountCents ?? DebtValidation.moneyToCents((amount as number) || 0),
+      })),
   });
 
   public static listDebts = z.object({
@@ -134,13 +171,41 @@ export class DebtValidation {
 
   public static createPayment = z.object({
     params: idSchema,
-    body: z.object({
-      amountCents: DebtValidation.amountCentsSchema,
-      type: z.enum(["cash", "adjustment"], {
-        message: "نوع السداد غير صالح",
-      }),
-      note: z.string().trim().max(2000, "الملاحظة طويلة جدًا").optional(),
-    }),
+    body: z
+      .object({
+        amountCents: DebtValidation.amountCentsSchema.optional(),
+        amount: DebtValidation.amountSchema.optional(),
+        type: z.enum(["cash", "adjustment"], {
+          message: "نوع السداد غير صالح",
+        }),
+        note: z.string().trim().max(2000, "الملاحظة طويلة جدًا").optional(),
+      })
+      .superRefine((data, ctx) => {
+        if (data.amountCents === undefined && data.amount === undefined) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["amountCents"],
+            message: "يجب إرسال amountCents أو amount",
+          });
+          return;
+        }
+
+        if (data.amount !== undefined && data.amountCents !== undefined) {
+          const normalized = DebtValidation.moneyToCents(data.amount);
+          if (Math.abs(normalized - data.amountCents) > 1) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ["amount"],
+              message: "قيمة amount لا تطابق amountCents",
+            });
+          }
+        }
+      })
+      .transform(({ amount, amountCents, ...rest }) => ({
+        ...rest,
+        amountCents:
+          amountCents ?? DebtValidation.moneyToCents((amount as number) || 0),
+      })),
   });
 }
 

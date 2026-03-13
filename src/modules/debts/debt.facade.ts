@@ -60,6 +60,10 @@ class DebtReadFacade {
     return debtService.getMemberDebtSummary(memberId, centerId);
   }
 
+  public getMembersDebtSummary(memberIds: number[], centerId: number) {
+    return debtService.getMembersDebtSummary(memberIds, centerId);
+  }
+
   public getCenterDebtSummary(centerId: number) {
     return debtService.getSummary(centerId, {});
   }

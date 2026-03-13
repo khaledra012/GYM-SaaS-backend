@@ -34,11 +34,31 @@ export const listDebts = catchAsync(async (req: AuthRequest, res: Response) => {
     query,
   });
 
+  const debts = result.data;
+  const pagination = {
+    total: result.total,
+    page: result.page,
+    limit: result.limit,
+    totalPages: result.totalPages,
+  };
+
   return res.status(200).json({
     status: "نجاح",
     success: true,
-    debts: result.data,
-    ...result,
+    debts,
+    items: debts,
+    results: debts,
+    total: result.total,
+    page: result.page,
+    limit: result.limit,
+    totalPages: result.totalPages,
+    pagination,
+    data: {
+      debts,
+      items: debts,
+      results: debts,
+      pagination,
+    },
   });
 });
 
@@ -95,11 +115,31 @@ export const listMemberDebts = catchAsync(
       query,
     );
 
+    const debts = result.data;
+    const pagination = {
+      total: result.total,
+      page: result.page,
+      limit: result.limit,
+      totalPages: result.totalPages,
+    };
+
     return res.status(200).json({
       status: "نجاح",
       success: true,
-      debts: result.data,
-      ...result,
+      debts,
+      items: debts,
+      results: debts,
+      total: result.total,
+      page: result.page,
+      limit: result.limit,
+      totalPages: result.totalPages,
+      pagination,
+      data: {
+        debts,
+        items: debts,
+        results: debts,
+        pagination,
+      },
     });
   },
 );

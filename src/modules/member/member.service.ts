@@ -208,9 +208,15 @@ class MemberService {
       const memberIds = members.map((member) => member.id);
       const subscriptionsByMember =
         await subscriptionReadFacade.getLatestByMemberIds(centerId, memberIds);
+      const debtSummariesByMember =
+        await debtReadFacade.getMembersDebtSummary(memberIds, centerId);
 
       const membersWithSubscription = members.map((member) =>
-        this.mapMemberWithSubscription(member, subscriptionsByMember.get(member.id)),
+        this.mapMemberWithSubscription(
+          member,
+          subscriptionsByMember.get(member.id),
+          debtSummariesByMember.get(member.id),
+        ),
       );
 
       return {
@@ -245,9 +251,18 @@ class MemberService {
 
     const total = filteredMembers.length;
     const paginatedMembers = filteredMembers.slice(offset, offset + limit);
+    const paginatedMemberIds = paginatedMembers.map((member) => member.id);
+    const debtSummariesByMember = await debtReadFacade.getMembersDebtSummary(
+      paginatedMemberIds,
+      centerId,
+    );
 
     const membersWithSubscription = paginatedMembers.map((member) =>
-      this.mapMemberWithSubscription(member, subscriptionsByMember.get(member.id)),
+      this.mapMemberWithSubscription(
+        member,
+        subscriptionsByMember.get(member.id),
+        debtSummariesByMember.get(member.id),
+      ),
     );
 
     return {

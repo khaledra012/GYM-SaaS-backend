@@ -744,6 +744,108 @@ class DebtService {
     };
   }
 
+  public async getMembersDebtSummary(memberIds: number[], centerId: number) {
+    const uniqueMemberIds = Array.from(
+      new Set(memberIds.filter((id) => Number.isInteger(id) && id > 0)),
+    );
+
+    const summaryByMemberId = new Map<
+      number,
+      {
+        totalDebtAmountCents: number;
+        totalDebtAmount: string;
+        outstandingDebtAmountCents: number;
+        outstandingDebtAmount: string;
+        outstandingDebtCount: number;
+      }
+    >();
+
+    if (uniqueMemberIds.length === 0) {
+      return summaryByMemberId;
+    }
+
+    const totalsRows = (await Debt.findAll({
+      attributes: [
+        "memberId",
+        [fn("SUM", col("originalAmountCents")), "totalDebtAmountCents"],
+        [fn("SUM", col("remainingAmountCents")), "outstandingDebtAmountCents"],
+      ],
+      where: {
+        centerId,
+        memberId: {
+          [Op.in]: uniqueMemberIds,
+        },
+      },
+      group: ["memberId"],
+      raw: true,
+    })) as unknown as Array<{
+      memberId: number;
+      totalDebtAmountCents: string | number | null;
+      outstandingDebtAmountCents: string | number | null;
+    }>;
+
+    const outstandingCountRows = (await Debt.findAll({
+      attributes: ["memberId", [fn("COUNT", col("id")), "outstandingDebtCount"]],
+      where: {
+        centerId,
+        memberId: {
+          [Op.in]: uniqueMemberIds,
+        },
+        status: {
+          [Op.in]: ["unpaid", "partially_paid"],
+        },
+      },
+      group: ["memberId"],
+      raw: true,
+    })) as unknown as Array<{
+      memberId: number;
+      outstandingDebtCount: string | number | null;
+    }>;
+
+    for (const memberId of uniqueMemberIds) {
+      summaryByMemberId.set(memberId, {
+        totalDebtAmountCents: 0,
+        totalDebtAmount: "0.00",
+        outstandingDebtAmountCents: 0,
+        outstandingDebtAmount: "0.00",
+        outstandingDebtCount: 0,
+      });
+    }
+
+    for (const row of totalsRows) {
+      const memberId = Number(row.memberId);
+      const totalDebtAmountCents = Number(row.totalDebtAmountCents ?? 0);
+      const outstandingDebtAmountCents = Number(row.outstandingDebtAmountCents ?? 0);
+      const current = summaryByMemberId.get(memberId);
+
+      summaryByMemberId.set(memberId, {
+        totalDebtAmountCents,
+        totalDebtAmount: centsToMoneyString(totalDebtAmountCents),
+        outstandingDebtAmountCents,
+        outstandingDebtAmount: centsToMoneyString(outstandingDebtAmountCents),
+        outstandingDebtCount: current?.outstandingDebtCount ?? 0,
+      });
+    }
+
+    for (const row of outstandingCountRows) {
+      const memberId = Number(row.memberId);
+      const current = summaryByMemberId.get(memberId) ?? {
+        totalDebtAmountCents: 0,
+        totalDebtAmount: "0.00",
+        outstandingDebtAmountCents: 0,
+        outstandingDebtAmount: "0.00",
+        outstandingDebtCount: 0,
+      };
+
+      summaryByMemberId.set(memberId, {
+        ...current,
+        outstandingDebtCount: Number(row.outstandingDebtCount ?? 0),
+      });
+    }
+
+    return summaryByMemberId;
+  }
+
   public buildAutomatedSubscriptionDebtTitle(context: {
     action: "create" | "renew_time" | "renew_sessions" | "renew_expired";
     subscriptionId: number;
