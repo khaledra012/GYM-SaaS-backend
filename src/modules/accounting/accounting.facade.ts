@@ -49,6 +49,28 @@ export interface IReverseByReferenceInput {
   transaction?: Transaction;
 }
 
+export interface IRecordDebtCollectionIncomeInput {
+  centerId: number;
+  debtId: number;
+  amountCents: number;
+  description?: string;
+  createdBy: number;
+  occurredAt?: Date;
+  centerTimezone?: string;
+  transaction?: Transaction;
+}
+
+export interface IRecordSubscriptionRefundExpenseInput {
+  centerId: number;
+  subscriptionId: number;
+  amountCents: number;
+  description?: string;
+  createdBy: number;
+  occurredAt?: Date;
+  centerTimezone?: string;
+  transaction?: Transaction;
+}
+
 class AccountingFacade {
   private async withTransaction<T>(
     externalTransaction: Transaction | undefined,
@@ -341,6 +363,113 @@ class AccountingFacade {
       return {
         count: reversals.length,
         transactions: reversals,
+      };
+    });
+  }
+
+  public async recordDebtCollectionIncome(
+    input: IRecordDebtCollectionIncomeInput,
+  ): Promise<AccountingTransaction> {
+    return this.withTransaction(input.transaction, async (transaction) => {
+      if (!Number.isInteger(input.amountCents) || input.amountCents <= 0) {
+        throw new AppError("قيمة تحصيل المديونية يجب أن تكون أكبر من صفر", 400);
+      }
+
+      await lockCenterRow(input.centerId, transaction);
+      const openShift = await this.findOpenShift(input.centerId, transaction);
+
+      const occurredAt = input.occurredAt ?? new Date();
+      const timezone = normalizeTimezone(input.centerTimezone);
+      const localDate = getDateOnlyInTimezone(occurredAt, timezone);
+      const amount = toMoneyString((input.amountCents / 100).toFixed(2));
+
+      return AccountingTransaction.create(
+        {
+          centerId: input.centerId,
+          shiftId: openShift.id,
+          type: "IN",
+          amount,
+          category: "other",
+          description: input.description?.trim() || "تحصيل مديونية",
+          referenceType: "debt",
+          referenceId: input.debtId,
+          localDate,
+          occurredAt,
+          source: "manual",
+          idempotencyKey: null,
+          reversalOfTransactionId: null,
+          createdBy: input.createdBy,
+          metadata: {
+            source: "debt_collection",
+            debtId: input.debtId,
+          },
+        },
+        { transaction },
+      );
+    });
+  }
+
+  public async recordSubscriptionRefundExpense(
+    input: IRecordSubscriptionRefundExpenseInput,
+  ): Promise<{ transaction: AccountingTransaction; alreadyRecorded: boolean }> {
+    return this.withTransaction(input.transaction, async (transaction) => {
+      if (!Number.isInteger(input.amountCents) || input.amountCents <= 0) {
+        throw new AppError("قيمة المرتجع يجب أن تكون أكبر من صفر", 400);
+      }
+
+      const existing = await AccountingTransaction.findOne({
+        where: {
+          centerId: input.centerId,
+          type: "OUT",
+          referenceType: "subscription_refund",
+          referenceId: input.subscriptionId,
+        },
+        transaction,
+        lock: true,
+      });
+
+      if (existing) {
+        return {
+          transaction: existing,
+          alreadyRecorded: true,
+        };
+      }
+
+      await lockCenterRow(input.centerId, transaction);
+      const openShift = await this.findOpenShift(input.centerId, transaction);
+
+      const occurredAt = input.occurredAt ?? new Date();
+      const timezone = normalizeTimezone(input.centerTimezone);
+      const localDate = getDateOnlyInTimezone(occurredAt, timezone);
+      const amount = toMoneyString((input.amountCents / 100).toFixed(2));
+
+      const refundTransaction = await AccountingTransaction.create(
+        {
+          centerId: input.centerId,
+          shiftId: openShift.id,
+          type: "OUT",
+          amount,
+          category: "subscription",
+          description: input.description?.trim() || "مرتجع اشتراك",
+          referenceType: "subscription_refund",
+          referenceId: input.subscriptionId,
+          localDate,
+          occurredAt,
+          source: "manual",
+          idempotencyKey: null,
+          reversalOfTransactionId: null,
+          createdBy: input.createdBy,
+          metadata: {
+            source: "subscription_refund",
+            subscriptionId: input.subscriptionId,
+          },
+        },
+        { transaction },
+      );
+
+      return {
+        transaction: refundTransaction,
+        alreadyRecorded: false,
       };
     });
   }

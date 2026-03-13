@@ -9,6 +9,7 @@ import {
   IRenewSessionBasedDTO,
   IRenewExpiredDTO,
   IDeductSessionsDTO,
+  IRefundSubscriptionDTO,
 } from "./subscription.schema";
 
 export const createSubscription = catchAsync(
@@ -206,6 +207,26 @@ export const cancelSubscription = catchAsync(
     return res.status(200).json({
       status: "نجاح",
       message: "تم إلغاء الاشتراك بنجاح",
+      data: subscription,
+    });
+  },
+);
+
+export const refundSubscription = catchAsync(
+  async (req: AuthRequest, res: Response) => {
+    const { id } = (req as any).validated.params as { id: number };
+    const data = (req as any).validated.body as IRefundSubscriptionDTO;
+
+    const subscription = await subscriptionService.refundSubscription(
+      id,
+      req.center.id,
+      data,
+      req.center.timezone,
+    );
+
+    return res.status(200).json({
+      status: "نجاح",
+      message: "تم تسجيل مرتجع الاشتراك بنجاح",
       data: subscription,
     });
   },

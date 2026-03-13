@@ -50,9 +50,25 @@ export class SubscriptionValidation {
         .number({ message: "المبلغ المدفوع (بالقروش) مطلوب" })
         .int()
         .min(0, "لا يمكن أن يكون بالسالب"),
+      totalPriceCents: z.coerce
+        .number({ message: "إجمالي القيمة يجب أن يكون رقمًا" })
+        .int("إجمالي القيمة يجب أن يكون رقمًا صحيحًا")
+        .min(0, "لا يمكن أن يكون إجمالي القيمة بالسالب")
+        .optional(),
       notes: z.string().trim().optional(),
     })
     .superRefine((data, ctx) => {
+      if (
+        data.totalPriceCents !== undefined &&
+        data.totalPriceCents < data.pricePaidCents
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["totalPriceCents"],
+          message: "إجمالي القيمة لا يمكن أن يكون أقل من المبلغ المدفوع",
+        });
+      }
+
       if (data.source === "plan") {
         if (data.planId === undefined) {
           ctx.addIssue({
@@ -163,6 +179,22 @@ export class SubscriptionValidation {
       .int()
       .min(1, "يجب تجديد الاشتراك ليوم واحد على الأقل"),
     pricePaidCents: z.coerce.number().int().min(0, "لا يمكن أن يكون بالسالب"),
+    totalPriceCents: z.coerce
+      .number()
+      .int("إجمالي القيمة يجب أن يكون رقمًا صحيحًا")
+      .min(0, "لا يمكن أن يكون إجمالي القيمة بالسالب")
+      .optional(),
+  }).superRefine((data, ctx) => {
+    if (
+      data.totalPriceCents !== undefined &&
+      data.totalPriceCents < data.pricePaidCents
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["totalPriceCents"],
+        message: "إجمالي القيمة لا يمكن أن يكون أقل من المبلغ المدفوع",
+      });
+    }
   });
 
   private static renewSessionBasedBodySchema = z.object({
@@ -171,6 +203,22 @@ export class SubscriptionValidation {
       .int()
       .min(1, "يجب إضافة حصة واحدة على الأقل"),
     pricePaidCents: z.coerce.number().int().min(0, "لا يمكن أن يكون بالسالب"),
+    totalPriceCents: z.coerce
+      .number()
+      .int("إجمالي القيمة يجب أن يكون رقمًا صحيحًا")
+      .min(0, "لا يمكن أن يكون إجمالي القيمة بالسالب")
+      .optional(),
+  }).superRefine((data, ctx) => {
+    if (
+      data.totalPriceCents !== undefined &&
+      data.totalPriceCents < data.pricePaidCents
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["totalPriceCents"],
+        message: "إجمالي القيمة لا يمكن أن يكون أقل من المبلغ المدفوع",
+      });
+    }
   });
 
   private static renewExpiredBodySchema = z
@@ -185,6 +233,11 @@ export class SubscriptionValidation {
         .number()
         .int("المبلغ المدفوع (بالقروش) يجب أن يكون رقمًا صحيحًا")
         .min(0, "لا يمكن أن يكون بالسالب"),
+      totalPriceCents: z.coerce
+        .number()
+        .int("إجمالي القيمة يجب أن يكون رقمًا صحيحًا")
+        .min(0, "لا يمكن أن يكون إجمالي القيمة بالسالب")
+        .optional(),
       planId: z.coerce.number().int().positive().optional(),
       type: z.enum(["time_based", "session_based"]).optional(),
       durationInDays: z.coerce
@@ -200,6 +253,17 @@ export class SubscriptionValidation {
       notes: z.string().trim().optional(),
     })
     .superRefine((data, ctx) => {
+      if (
+        data.totalPriceCents !== undefined &&
+        data.totalPriceCents < data.pricePaidCents
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["totalPriceCents"],
+          message: "إجمالي القيمة لا يمكن أن يكون أقل من المبلغ المدفوع",
+        });
+      }
+
       if (data.mode === "same_plan") {
         if (data.planId !== undefined) {
           ctx.addIssue({
@@ -334,6 +398,16 @@ export class SubscriptionValidation {
       .default(1),
   });
 
+  private static refundBodySchema = z
+    .object({
+      refundAmountCents: z.coerce
+        .number()
+        .int("قيمة المرتجع يجب أن تكون رقمًا صحيحًا")
+        .min(1, "قيمة المرتجع يجب أن تكون أكبر من صفر")
+        .optional(),
+      note: z.string().trim().max(2000, "الملاحظة طويلة جدًا").optional(),
+    });
+
   public static create = z.object({
     body: SubscriptionValidation.createBodySchema,
   });
@@ -370,6 +444,11 @@ export class SubscriptionValidation {
     params: SubscriptionValidation.idParamSchema,
     body: SubscriptionValidation.deductSessionsBodySchema,
   });
+
+  public static refund = z.object({
+    params: SubscriptionValidation.idParamSchema,
+    body: SubscriptionValidation.refundBodySchema,
+  });
 }
 
 export type ICreateSubscriptionDTO = z.infer<
@@ -392,4 +471,7 @@ export type IRenewExpiredDTO = z.infer<
 >["body"];
 export type IDeductSessionsDTO = z.infer<
   typeof SubscriptionValidation.deductSessions
+>["body"];
+export type IRefundSubscriptionDTO = z.infer<
+  typeof SubscriptionValidation.refund
 >["body"];

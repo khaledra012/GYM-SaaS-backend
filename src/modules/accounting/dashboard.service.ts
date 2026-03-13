@@ -9,6 +9,7 @@ import {
   getShiftTotals,
 } from "./accounting-aggregates.util";
 import { centsToMoneyString, moneyToCents } from "./money.util";
+import { debtReadFacade } from "../debts/debt.facade";
 
 interface IFinancialSummaryInput {
   centerId: number;
@@ -58,6 +59,8 @@ class DashboardService {
     });
 
     if (!openShift) {
+      const debtsSummary = await debtReadFacade.getCenterDebtSummary(input.centerId);
+
       return {
         localDate: resolvedDateFrom,
         dateFrom: resolvedDateFrom,
@@ -69,6 +72,7 @@ class DashboardService {
         currentDrawerCash: null,
         hasOpenShift: false,
         currentShift: null,
+        debtsSummary,
       };
     }
 
@@ -77,6 +81,7 @@ class DashboardService {
       moneyToCents(openShift.startingCash) +
       moneyToCents(shiftTotals.totalIn) -
       moneyToCents(shiftTotals.totalOut);
+    const debtsSummary = await debtReadFacade.getCenterDebtSummary(input.centerId);
 
     return {
       localDate: resolvedDateFrom,
@@ -88,6 +93,7 @@ class DashboardService {
       netProfit: periodTotals.net,
       currentDrawerCash: centsToMoneyString(currentDrawerCashCents),
       hasOpenShift: true,
+      debtsSummary,
       currentShift: {
         id: openShift.id,
         localDate: openShift.localDate,

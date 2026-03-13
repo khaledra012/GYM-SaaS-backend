@@ -9,6 +9,7 @@ import { subscriptionReadFacade } from "./subscription.facade";
 import { planReadFacade } from "../plans";
 import { memberReadFacade } from "../member";
 import { accountingFacade } from "../accounting";
+import { debtCommandFacade } from "../debts";
 import {
   AppError,
   addDaysToDateOnly,
@@ -25,6 +26,7 @@ import {
   IRenewExpiredDTO,
   IUpdateNotesDTO,
   IDeductSessionsDTO,
+  IRefundSubscriptionDTO,
 } from "./subscription.schema";
 
 class SubscriptionService {
@@ -82,6 +84,72 @@ class SubscriptionService {
   private parseDateOnlyToUtcTimestamp(dateOnly: string): number {
     const [year, month, day] = dateOnly.split("-").map(Number);
     return Date.UTC(year, month - 1, day);
+  }
+
+  private priceStringToCents(value: string): number {
+    const normalized = value.trim();
+    if (!/^\d+(\.\d{1,2})?$/.test(normalized)) {
+      throw new AppError("سعر الباقة غير صالح", 500);
+    }
+
+    const [integerPart, decimalPart = ""] = normalized.split(".");
+    return Number(integerPart) * 100 + Number(decimalPart.padEnd(2, "0"));
+  }
+
+  private resolveExpectedTotalPriceCents(input: {
+    source: SubscriptionAttributes["source"];
+    pricePaidCents: number;
+    totalPriceCents?: number;
+    planPrice?: string;
+  }): number {
+    if (input.totalPriceCents !== undefined) {
+      return input.totalPriceCents;
+    }
+
+    if (input.source === "plan") {
+      if (!input.planPrice) {
+        throw new AppError("لا يمكن تحديد إجمالي قيمة الاشتراك من الباقة", 500);
+      }
+
+      return this.priceStringToCents(input.planPrice);
+    }
+
+    return input.pricePaidCents;
+  }
+
+  private async createDebtForPartialSubscriptionPayment(input: {
+    centerId: number;
+    memberId: number;
+    subscriptionId: number;
+    action: "create" | "renew_time" | "renew_sessions" | "renew_expired";
+    totalPriceCents: number;
+    pricePaidCents: number;
+    centerTimezone?: string;
+    transaction: Transaction;
+  }): Promise<void> {
+    const debtAmountCents = input.totalPriceCents - input.pricePaidCents;
+    if (debtAmountCents <= 0) {
+      return;
+    }
+
+    await debtCommandFacade.createAutomatedDebt({
+      centerId: input.centerId,
+      memberId: input.memberId,
+      amountCents: debtAmountCents,
+      title: debtCommandFacade.buildAutomatedSubscriptionDebtTitle({
+        action: input.action,
+        subscriptionId: input.subscriptionId,
+      }),
+      note: debtCommandFacade.buildAutomatedSubscriptionDebtNote({
+        totalPriceCents: input.totalPriceCents,
+        pricePaidCents: input.pricePaidCents,
+      }),
+      referenceType: "subscription",
+      referenceId: input.subscriptionId,
+      createdBy: input.centerId,
+      centerTimezone: input.centerTimezone,
+      transaction: input.transaction,
+    });
   }
 
   private getRemainingDays(
@@ -216,6 +284,7 @@ class SubscriptionService {
       let remainingSessions: number | null = null;
       let manualDurationInDays: number | null = null;
       let manualTotalSessions: number | null = null;
+      let expectedTotalPriceCents = data.pricePaidCents;
 
       if (data.source === "plan") {
         const plan = await planReadFacade.findByIdForSubscription(
@@ -227,6 +296,12 @@ class SubscriptionService {
 
         planId = plan.id;
         type = plan.type;
+        expectedTotalPriceCents = this.resolveExpectedTotalPriceCents({
+          source: data.source,
+          pricePaidCents: data.pricePaidCents,
+          totalPriceCents: data.totalPriceCents,
+          planPrice: plan.price,
+        });
 
         if (plan.type === "time_based") {
           if (!plan.durationInDays) {
@@ -248,6 +323,11 @@ class SubscriptionService {
         }
       } else {
         type = data.type as SubscriptionAttributes["type"];
+        expectedTotalPriceCents = this.resolveExpectedTotalPriceCents({
+          source: data.source,
+          pricePaidCents: data.pricePaidCents,
+          totalPriceCents: data.totalPriceCents,
+        });
 
         if (type === "time_based") {
           manualDurationInDays = data.durationInDays as number;
@@ -298,6 +378,17 @@ class SubscriptionService {
         transaction: t,
       });
 
+      await this.createDebtForPartialSubscriptionPayment({
+        centerId,
+        memberId: subscription.memberId,
+        subscriptionId: subscription.id,
+        action: "create",
+        totalPriceCents: expectedTotalPriceCents,
+        pricePaidCents: data.pricePaidCents,
+        centerTimezone,
+        transaction: t,
+      });
+
       await this.logEvent(
         subscription.id,
         centerId,
@@ -307,6 +398,7 @@ class SubscriptionService {
           planId,
           type,
           pricePaidCents: data.pricePaidCents,
+          totalPriceCents: expectedTotalPriceCents,
           startDate: data.startDate,
           endDate,
           totalSessions,
@@ -488,6 +580,8 @@ class SubscriptionService {
       const baseDateOnly = subscription.endDate
         ? getDateOnlyInTimezone(subscription.endDate, timezone)
         : getCurrentDateOnlyInTimezone(timezone);
+      const expectedTotalPriceCents =
+        data.totalPriceCents ?? data.pricePaidCents;
 
       const newEndDateOnly = addDaysToDateOnly(baseDateOnly, data.extraDays);
       const newEndDate = dateOnlyToUtcStartOfDay(newEndDateOnly, timezone);
@@ -510,6 +604,17 @@ class SubscriptionService {
         transaction: t,
       });
 
+      await this.createDebtForPartialSubscriptionPayment({
+        centerId,
+        memberId: subscription.memberId,
+        subscriptionId: subscription.id,
+        action: "renew_time",
+        totalPriceCents: expectedTotalPriceCents,
+        pricePaidCents: data.pricePaidCents,
+        centerTimezone,
+        transaction: t,
+      });
+
       await this.logEvent(
         subscription.id,
         centerId,
@@ -517,6 +622,7 @@ class SubscriptionService {
         {
           extraDays: data.extraDays,
           pricePaidCents: data.pricePaidCents,
+          totalPriceCents: expectedTotalPriceCents,
           oldEndDate,
           newEndDate,
         },
@@ -554,6 +660,8 @@ class SubscriptionService {
 
       const oldRemaining = subscription.remainingSessions || 0;
       const oldTotal = subscription.totalSessions || 0;
+      const expectedTotalPriceCents =
+        data.totalPriceCents ?? data.pricePaidCents;
 
       subscription.totalSessions = oldTotal + data.extraSessions;
       subscription.remainingSessions = oldRemaining + data.extraSessions;
@@ -574,6 +682,17 @@ class SubscriptionService {
         transaction: t,
       });
 
+      await this.createDebtForPartialSubscriptionPayment({
+        centerId,
+        memberId: subscription.memberId,
+        subscriptionId: subscription.id,
+        action: "renew_sessions",
+        totalPriceCents: expectedTotalPriceCents,
+        pricePaidCents: data.pricePaidCents,
+        centerTimezone,
+        transaction: t,
+      });
+
       await this.logEvent(
         subscription.id,
         centerId,
@@ -581,6 +700,7 @@ class SubscriptionService {
         {
           extraSessions: data.extraSessions,
           pricePaidCents: data.pricePaidCents,
+          totalPriceCents: expectedTotalPriceCents,
           oldRemaining,
           newRemaining: subscription.remainingSessions,
         },
@@ -676,6 +796,7 @@ class SubscriptionService {
       let endDate: Date | null = null;
       let totalSessions: number | null = null;
       let remainingSessions: number | null = null;
+      let expectedTotalPriceCents = data.pricePaidCents;
 
       if (data.mode === "same_plan") {
         if (subscription.source !== "plan" || !subscription.planId) {
@@ -698,6 +819,12 @@ class SubscriptionService {
         source = "plan";
         planId = currentPlan.id;
         type = currentPlan.type;
+        expectedTotalPriceCents = this.resolveExpectedTotalPriceCents({
+          source,
+          pricePaidCents: data.pricePaidCents,
+          totalPriceCents: data.totalPriceCents,
+          planPrice: currentPlan.price,
+        });
 
         if (currentPlan.type === "time_based") {
           if (!currentPlan.durationInDays) {
@@ -731,6 +858,12 @@ class SubscriptionService {
         source = "plan";
         planId = plan.id;
         type = plan.type;
+        expectedTotalPriceCents = this.resolveExpectedTotalPriceCents({
+          source,
+          pricePaidCents: data.pricePaidCents,
+          totalPriceCents: data.totalPriceCents,
+          planPrice: plan.price,
+        });
 
         if (plan.type === "time_based") {
           if (!plan.durationInDays) {
@@ -751,6 +884,11 @@ class SubscriptionService {
         source = "manual";
         planId = null;
         type = data.type as SubscriptionAttributes["type"];
+        expectedTotalPriceCents = this.resolveExpectedTotalPriceCents({
+          source,
+          pricePaidCents: data.pricePaidCents,
+          totalPriceCents: data.totalPriceCents,
+        });
 
         if (type === "time_based") {
           const durationInDays = data.durationInDays as number;
@@ -799,6 +937,17 @@ class SubscriptionService {
         transaction: t,
       });
 
+      await this.createDebtForPartialSubscriptionPayment({
+        centerId,
+        memberId: subscription.memberId,
+        subscriptionId: subscription.id,
+        action: "renew_expired",
+        totalPriceCents: expectedTotalPriceCents,
+        pricePaidCents: data.pricePaidCents,
+        centerTimezone,
+        transaction: t,
+      });
+
       await this.logEvent(
         subscription.id,
         centerId,
@@ -807,6 +956,7 @@ class SubscriptionService {
           renewalMode: data.mode,
           startDate: startDateOnly,
           pricePaidCents: data.pricePaidCents,
+          totalPriceCents: expectedTotalPriceCents,
           previous: previousSnapshot,
           current: {
             source,
@@ -1027,12 +1177,12 @@ class SubscriptionService {
       subscription.frozenAt = null;
       await subscription.save({ transaction: t });
 
-      const reverseResult = await accountingFacade.reverseAutomatedTransactionsByReference({
+      const settledDebtsResult =
+        await debtCommandFacade.settleOutstandingDebtsByAdjustment({
         centerId,
         referenceType: "subscription",
         referenceId: subscription.id,
-        reversalIdempotencyPrefix: `subscription:cancel:${subscription.id}`,
-        reason: "إلغاء الاشتراك - عكس إيراد تلقائي",
+        note: `تصفية مديونية بسبب إلغاء الاشتراك رقم #${subscription.id}`,
         createdBy: centerId,
         transaction: t,
       });
@@ -1043,10 +1193,92 @@ class SubscriptionService {
         "cancelled",
         {
           previousStatus,
-          reversedTransactionsCount: reverseResult.count,
+          settledDebtsCount: settledDebtsResult.count,
         },
         t,
       );
+
+      return subscription;
+    });
+  }
+
+  public async refundSubscription(
+    id: number,
+    centerId: number,
+    data: IRefundSubscriptionDTO,
+    centerTimezone?: string,
+  ) {
+    return sequelize.transaction(async (t) => {
+      const subscription = await Subscription.findOne({
+        where: { id, centerId },
+        lock: true,
+        transaction: t,
+      });
+      if (!subscription) throw new AppError("الاشتراك غير موجود", 404);
+
+      const refundAmountCents = data.refundAmountCents ?? subscription.pricePaidCents;
+
+      if (subscription.pricePaidCents <= 0) {
+        throw new AppError(
+          "لا يمكن عمل مرتجع لاشتراك لم يتم تحصيل أي مبلغ له",
+          400,
+        );
+      }
+
+      if (!Number.isInteger(refundAmountCents) || refundAmountCents <= 0) {
+        throw new AppError("قيمة المرتجع يجب أن تكون أكبر من صفر", 400);
+      }
+
+      if (refundAmountCents > subscription.pricePaidCents) {
+        throw new AppError(
+          "قيمة المرتجع لا يمكن أن تتجاوز المبلغ المحصل فعليًا",
+          400,
+        );
+      }
+
+      const previousStatus = subscription.status;
+      subscription.status = "cancelled";
+      subscription.frozenAt = null;
+      await subscription.save({ transaction: t });
+
+      const settleResult =
+        await debtCommandFacade.settleOutstandingDebtsByAdjustment({
+          centerId,
+          referenceType: "subscription",
+          referenceId: subscription.id,
+          note: `تصفية مديونية بسبب مرتجع الاشتراك رقم #${subscription.id}`,
+          createdBy: centerId,
+          centerTimezone,
+          transaction: t,
+        });
+
+      const refundDescription =
+        data.note?.trim() || `مرتجع اشتراك رقم #${subscription.id}`;
+
+      const refundResult = await accountingFacade.recordSubscriptionRefundExpense({
+        centerId,
+        subscriptionId: subscription.id,
+        amountCents: refundAmountCents,
+        description: refundDescription,
+        createdBy: centerId,
+        centerTimezone,
+        transaction: t,
+      });
+
+      if (!refundResult.alreadyRecorded) {
+        await this.logEvent(
+          subscription.id,
+          centerId,
+          "refunded",
+          {
+            previousStatus,
+            refundAmountCents,
+            settledDebtsCount: settleResult.count,
+            note: data.note ?? null,
+          },
+          t,
+        );
+      }
 
       return subscription;
     });

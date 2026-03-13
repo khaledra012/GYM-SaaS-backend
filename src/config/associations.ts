@@ -6,9 +6,14 @@ import SubscriptionEvent from "../modules/subscriptions/subscription-event.model
 import Checkin from "../modules/checkins/checkin.model";
 import Shift from "../modules/accounting/shift.model";
 import AccountingTransaction from "../modules/accounting/accounting-transaction.model";
+import { initDebtModels } from "../modules/debts/debt.persistence";
+import Debt from "../modules/debts/debt.model";
+import DebtPayment from "../modules/debts/debt-payment.model";
 import { logger } from "../shared";
 
 export const setupAssociations = () => {
+  initDebtModels();
+
   // Center -> Members
   Center.hasMany(Member, { foreignKey: "centerId", as: "members" });
   Member.belongsTo(Center, { foreignKey: "centerId", as: "center" });
@@ -76,6 +81,32 @@ export const setupAssociations = () => {
   AccountingTransaction.belongsTo(Center, {
     foreignKey: "centerId",
     as: "accountingCenter",
+  });
+
+  // Center -> Debts
+  Center.hasMany(Debt, { foreignKey: "centerId", as: "debts" });
+  Debt.belongsTo(Center, { foreignKey: "centerId", as: "center" });
+
+  // Member -> Debts
+  Member.hasMany(Debt, { foreignKey: "memberId", as: "debts" });
+  Debt.belongsTo(Member, { foreignKey: "memberId", as: "member" });
+
+  // Debt -> Debt Payments
+  Debt.hasMany(DebtPayment, { foreignKey: "debtId", as: "payments" });
+  DebtPayment.belongsTo(Debt, { foreignKey: "debtId", as: "debt" });
+
+  // Center -> Debt Payments
+  Center.hasMany(DebtPayment, { foreignKey: "centerId", as: "debtPayments" });
+  DebtPayment.belongsTo(Center, { foreignKey: "centerId", as: "debtCenter" });
+
+  // Accounting Transaction -> Debt Payments
+  AccountingTransaction.hasMany(DebtPayment, {
+    foreignKey: "accountingTransactionId",
+    as: "debtPayments",
+  });
+  DebtPayment.belongsTo(AccountingTransaction, {
+    foreignKey: "accountingTransactionId",
+    as: "accountingTransaction",
   });
 
   logger.info("Database associations setup completed");

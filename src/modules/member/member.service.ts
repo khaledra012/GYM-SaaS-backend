@@ -12,6 +12,7 @@ import {
   subscriptionReadFacade,
 } from "../subscriptions/subscription.facade";
 import { checkinReadFacade } from "../checkins/checkin.facade";
+import { debtReadFacade } from "../debts/debt.facade";
 
 type MemberStatusFilter = "active" | "inactive" | "rejected";
 type SubscriptionStatusFilter =
@@ -48,6 +49,13 @@ class MemberService {
   private mapMemberWithSubscription(
     member: Member,
     snapshot?: IMemberSubscriptionSnapshot,
+    debtSummary?: {
+      totalDebtAmountCents: number;
+      totalDebtAmount: string;
+      outstandingDebtAmountCents: number;
+      outstandingDebtAmount: string;
+      outstandingDebtCount: number;
+    },
   ) {
     const memberData = member.toJSON();
 
@@ -57,6 +65,11 @@ class MemberService {
       subscriptionType: snapshot?.type ?? null,
       subscriptionStatus: snapshot?.effectiveStatus ?? null,
       subscriptionEndDate: snapshot?.endDate ?? null,
+      totalDebtAmountCents: debtSummary?.totalDebtAmountCents ?? 0,
+      totalDebtAmount: debtSummary?.totalDebtAmount ?? "0.00",
+      outstandingDebtAmountCents: debtSummary?.outstandingDebtAmountCents ?? 0,
+      outstandingDebtAmount: debtSummary?.outstandingDebtAmount ?? "0.00",
+      outstandingDebtCount: debtSummary?.outstandingDebtCount ?? 0,
       barcodeValue: memberData.code,
       barcodeSvgPath: `/api/v1/members/${memberData.id}/barcode.svg`,
     };
@@ -261,8 +274,13 @@ class MemberService {
     const member = await this.getMemberById(id, centerId);
     const subscriptionsByMember =
       await subscriptionReadFacade.getLatestByMemberIds(centerId, [id]);
+    const debtSummary = await debtReadFacade.getMemberDebtSummary(id, centerId);
 
-    return this.mapMemberWithSubscription(member, subscriptionsByMember.get(id));
+    return this.mapMemberWithSubscription(
+      member,
+      subscriptionsByMember.get(id),
+      debtSummary,
+    );
   }
 
   public async updateMember(

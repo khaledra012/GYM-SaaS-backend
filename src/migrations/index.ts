@@ -43,6 +43,14 @@ import {
   downAddCenterSubscriptionPeriodFields,
   upAddCenterSubscriptionPeriodFields,
 } from "./20260311_02_add_center_subscription_period_fields";
+import {
+  downCreateDebtsTables,
+  upCreateDebtsTables,
+} from "./20260313_01_create_debts_tables";
+import {
+  downAddRefundedSubscriptionEvent,
+  upAddRefundedSubscriptionEvent,
+} from "./20260313_02_add_refunded_subscription_event";
 
 export const migrations: IMigration[] = [
   {
@@ -110,5 +118,17 @@ export const migrations: IMigration[] = [
     name: "Add subscription period fields to centers",
     up: upAddCenterSubscriptionPeriodFields,
     down: downAddCenterSubscriptionPeriodFields,
+  },
+  {
+    id: "20260313_01_create_debts_tables",
+    name: "Create debts and debt_payments tables",
+    up: upCreateDebtsTables,
+    down: downCreateDebtsTables,
+  },
+  {
+    id: "20260313_02_add_refunded_subscription_event",
+    name: "Add refunded subscription event type",
+    up: upAddRefundedSubscriptionEvent,
+    down: downAddRefundedSubscriptionEvent,
   },
 ];

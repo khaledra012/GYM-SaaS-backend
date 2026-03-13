@@ -3,6 +3,7 @@ import Plan from "./plan.model";
 
 export interface IPlanForSubscription {
   id: number;
+  price: string;
   type: "time_based" | "session_based";
   durationInDays: number | null;
   sessionCount: number | null;
@@ -20,7 +21,7 @@ class PlanReadFacade {
     options: IPlanReadOptions = {},
   ): Promise<IPlanForSubscription | null> {
     const queryOptions: any = {
-      attributes: ["id", "type", "durationInDays", "sessionCount"],
+      attributes: ["id", "price", "type", "durationInDays", "sessionCount"],
       where: { id: planId, centerId },
       raw: true,
     };

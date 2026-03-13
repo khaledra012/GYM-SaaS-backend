@@ -77,6 +77,12 @@ router.post(
   subscriptionController.cancelSubscription,
 );
 
+router.post(
+  "/:id/refund",
+  validate(SubscriptionValidation.refund),
+  subscriptionController.refundSubscription,
+);
+
 router.get(
   "/:id/timeline",
   validate(SubscriptionValidation.subscriptionId),

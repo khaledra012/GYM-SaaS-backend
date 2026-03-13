@@ -11,6 +11,7 @@ export interface SubscriptionEventAttributes {
     | "frozen"
     | "unfrozen"
     | "cancelled"
+    | "refunded"
     | "expired"
     | "session_used"
     | "session_deducted";
@@ -35,6 +36,7 @@ class SubscriptionEvent
     | "frozen"
     | "unfrozen"
     | "cancelled"
+    | "refunded"
     | "expired"
     | "session_used"
     | "session_deducted";
@@ -70,6 +72,7 @@ SubscriptionEvent.init(
         "frozen",
         "unfrozen",
         "cancelled",
+        "refunded",
         "expired",
         "session_used",
         "session_deducted",

@@ -11,6 +11,7 @@ import { registerPlanModule } from "./modules/plans";
 import { registerSubscriptionModule } from "./modules/subscriptions";
 import { registerCheckinModule } from "./modules/checkins";
 import { registerAccountingModule } from "./modules/accounting";
+import { registerDebtModule } from "./modules/debts";
 import { registerPlatformAdminModule } from "./modules/platform-admin";
 
 const app: Application = express();
@@ -44,6 +45,7 @@ registerPlanModule(app);
 registerSubscriptionModule(app);
 registerCheckinModule(app);
 registerAccountingModule(app);
+registerDebtModule(app);
 registerPlatformAdminModule(app);
 
 // 404 catch-all
