@@ -1,5 +1,6 @@
 ﻿const ISO_DATE_ONLY_REGEX = /^\d{4}-\d{2}-\d{2}$/;
-const DEFAULT_TIMEZONE = process.env.APP_DEFAULT_TIMEZONE || "UTC";
+const DEFAULT_TIMEZONE = process.env.APP_DEFAULT_TIMEZONE || "Africa/Cairo";
+const LEGACY_UTC_TIMEZONES = new Set(["UTC", "Etc/UTC"]);
 
 const formatterCache = new Map<string, Intl.DateTimeFormat>();
 
@@ -78,6 +79,11 @@ export const isValidTimezone = (timeZone: string): boolean => {
 };
 
 export const normalizeTimezone = (timeZone?: string | null): string => {
+  // Keep behavior aligned with Egypt timezone for legacy UTC centers.
+  if (timeZone && LEGACY_UTC_TIMEZONES.has(timeZone)) {
+    return isValidTimezone(DEFAULT_TIMEZONE) ? DEFAULT_TIMEZONE : "Africa/Cairo";
+  }
+
   if (timeZone && isValidTimezone(timeZone)) {
     return timeZone;
   }
@@ -86,7 +92,7 @@ export const normalizeTimezone = (timeZone?: string | null): string => {
     return DEFAULT_TIMEZONE;
   }
 
-  return "UTC";
+  return "Africa/Cairo";
 };
 
 export const getDateOnlyInTimezone = (
