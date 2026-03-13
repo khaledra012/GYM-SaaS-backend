@@ -323,14 +323,39 @@ class DebtService {
     centerId: number,
     query: IDebtsSummaryQuery | { memberId?: number },
   ): Promise<IDebtSummary> {
-    const { where, include } = this.buildListFilters(centerId, {
-      page: 1,
-      limit: 1,
-      outstandingOnly: undefined,
-      search: undefined,
-      status: undefined,
-      ...query,
-    });
+    const { dateFrom, dateTo } = this.resolveDateRange(query as any);
+    const whereConditions: WhereOptions[] = [{ centerId }];
+
+    if ("memberId" in query && query.memberId) {
+      whereConditions.push({ memberId: query.memberId });
+    }
+
+    if (dateFrom && dateTo) {
+      whereConditions.push({
+        localDate: {
+          [Op.between]: [dateFrom, dateTo],
+        },
+      });
+    } else if (dateFrom) {
+      whereConditions.push({
+        localDate: {
+          [Op.gte]: dateFrom,
+        },
+      });
+    } else if (dateTo) {
+      whereConditions.push({
+        localDate: {
+          [Op.lte]: dateTo,
+        },
+      });
+    }
+
+    const where =
+      whereConditions.length === 1
+        ? whereConditions[0]
+        : {
+            [Op.and]: whereConditions,
+          };
 
     const [
       totalOriginalRaw,
@@ -340,15 +365,14 @@ class DebtService {
       partiallyPaidCount,
       paidCount,
     ] = await Promise.all([
-      Debt.sum("originalAmountCents", { where, include } as any),
-      Debt.sum("paidAmountCents", { where, include } as any),
-      Debt.sum("remainingAmountCents", { where, include } as any),
-      Debt.count({ where: { [Op.and]: [where, { status: "unpaid" }] }, include }),
+      Debt.sum("originalAmountCents", { where } as any),
+      Debt.sum("paidAmountCents", { where } as any),
+      Debt.sum("remainingAmountCents", { where } as any),
+      Debt.count({ where: { [Op.and]: [where, { status: "unpaid" }] } }),
       Debt.count({
         where: { [Op.and]: [where, { status: "partially_paid" }] },
-        include,
       }),
-      Debt.count({ where: { [Op.and]: [where, { status: "paid" }] }, include }),
+      Debt.count({ where: { [Op.and]: [where, { status: "paid" }] } }),
     ]);
 
     const membersWithOutstandingDebtsCount = await Debt.count({
@@ -362,7 +386,6 @@ class DebtService {
           },
         ],
       },
-      include,
       distinct: true,
       col: "memberId",
     });

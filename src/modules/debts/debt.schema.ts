@@ -44,10 +44,32 @@ const dateRangeQuerySchema = z
   })
   .superRefine((query, ctx) => {
     if (query.date && (query.dateFrom || query.dateTo || query.startDate || query.endDate)) {
+      const normalizedFrom = query.dateFrom ?? query.startDate ?? query.date;
+      const normalizedTo = query.dateTo ?? query.endDate ?? query.date;
+
+      if (normalizedFrom !== query.date || normalizedTo !== query.date) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["date"],
+          message:
+            "عند إرسال date مع مدى زمني، يجب أن تكون كل القيم لنفس اليوم فقط",
+        });
+      }
+    }
+
+    if (query.dateFrom && query.startDate && query.dateFrom !== query.startDate) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ["date"],
-        message: "لا يمكن استخدام date مع أي مدى زمني في نفس الطلب",
+        path: ["dateFrom"],
+        message: "لا يمكن إرسال قيمتين مختلفتين لـ dateFrom و startDate",
+      });
+    }
+
+    if (query.dateTo && query.endDate && query.dateTo !== query.endDate) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["dateTo"],
+        message: "لا يمكن إرسال قيمتين مختلفتين لـ dateTo و endDate",
       });
     }
 
