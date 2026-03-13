@@ -10,6 +10,7 @@ import {
 } from "./accounting-aggregates.util";
 import { centsToMoneyString, moneyToCents } from "./money.util";
 import { debtReadFacade } from "../debts/debt.facade";
+import { logger } from "../../shared";
 
 interface IFinancialSummaryInput {
   centerId: number;
@@ -20,6 +21,48 @@ interface IFinancialSummaryInput {
 }
 
 class DashboardService {
+  private mapPeriodTotals(totals: {
+    totalIn: string;
+    totalOut: string;
+    net: string;
+  }) {
+    return {
+      // New naming used by dashboard cards
+      income: totals.totalIn,
+      expenses: totals.totalOut,
+      netProfit: totals.net,
+      // Backward-compatible aliases for older frontend contracts
+      totalIn: totals.totalIn,
+      totalOut: totals.totalOut,
+      net: totals.net,
+    };
+  }
+
+  private async getSafeDebtSummary(centerId: number) {
+    try {
+      return await debtReadFacade.getCenterDebtSummary(centerId);
+    } catch (error) {
+      logger.error("تعذر تحميل ملخص المديونيات وسيتم تجاهله مؤقتًا", {
+        centerId,
+        error: String(error),
+      });
+
+      return {
+        totalOriginalAmountCents: 0,
+        totalPaidAmountCents: 0,
+        totalRemainingAmountCents: 0,
+        totalOriginalAmount: "0.00",
+        totalPaidAmount: "0.00",
+        totalRemainingAmount: "0.00",
+        unpaidCount: 0,
+        partiallyPaidCount: 0,
+        paidCount: 0,
+        outstandingDebtsCount: 0,
+        membersWithOutstandingDebtsCount: 0,
+      };
+    }
+  }
+
   public async getFinancialSummary(input: IFinancialSummaryInput) {
     const timezone = normalizeTimezone(input.centerTimezone);
     const todayLocalDate = getCurrentDateOnlyInTimezone(timezone);
@@ -49,6 +92,7 @@ class DashboardService {
             resolvedDateFrom,
             resolvedDateTo,
           );
+    const mappedTotals = this.mapPeriodTotals(periodTotals);
 
     const openShift = await Shift.findOne({
       where: {
@@ -59,16 +103,14 @@ class DashboardService {
     });
 
     if (!openShift) {
-      const debtsSummary = await debtReadFacade.getCenterDebtSummary(input.centerId);
+      const debtsSummary = await this.getSafeDebtSummary(input.centerId);
 
       return {
         localDate: resolvedDateFrom,
         dateFrom: resolvedDateFrom,
         dateTo: resolvedDateTo,
         periodType,
-        income: periodTotals.totalIn,
-        expenses: periodTotals.totalOut,
-        netProfit: periodTotals.net,
+        ...mappedTotals,
         currentDrawerCash: null,
         hasOpenShift: false,
         currentShift: null,
@@ -81,16 +123,14 @@ class DashboardService {
       moneyToCents(openShift.startingCash) +
       moneyToCents(shiftTotals.totalIn) -
       moneyToCents(shiftTotals.totalOut);
-    const debtsSummary = await debtReadFacade.getCenterDebtSummary(input.centerId);
+    const debtsSummary = await this.getSafeDebtSummary(input.centerId);
 
     return {
       localDate: resolvedDateFrom,
       dateFrom: resolvedDateFrom,
       dateTo: resolvedDateTo,
       periodType,
-      income: periodTotals.totalIn,
-      expenses: periodTotals.totalOut,
-      netProfit: periodTotals.net,
+      ...mappedTotals,
       currentDrawerCash: centsToMoneyString(currentDrawerCashCents),
       hasOpenShift: true,
       debtsSummary,
