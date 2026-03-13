@@ -94,7 +94,7 @@ export class MemberValidation {
         })
         .optional(),
       page: z.coerce.number().int().positive().optional(),
-      limit: z.coerce.number().int().positive().max(100).optional(),
+      limit: z.coerce.number().int().positive().max(200).optional(),
     }),
   });
 

@@ -38,6 +38,10 @@ export const getAllMembers = catchAsync(
       status: "نجاح",
       members: result.members,
       pagination: result.pagination,
+      data: {
+        members: result.members,
+        pagination: result.pagination,
+      },
     });
   },
 );

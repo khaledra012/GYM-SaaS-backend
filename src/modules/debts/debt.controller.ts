@@ -1,4 +1,4 @@
-import { Response } from "express";
+﻿import { Response } from "express";
 import { AuthRequest, catchAsync } from "../../shared";
 import { debtService } from "./debt.service";
 import {
@@ -21,6 +21,7 @@ export const createDebt = catchAsync(async (req: AuthRequest, res: Response) => 
 
   return res.status(201).json({
     status: "نجاح",
+    success: true,
     message: "تم إنشاء المديونية بنجاح",
     data: debt,
   });
@@ -35,6 +36,8 @@ export const listDebts = catchAsync(async (req: AuthRequest, res: Response) => {
 
   return res.status(200).json({
     status: "نجاح",
+    success: true,
+    debts: result.data,
     ...result,
   });
 });
@@ -45,6 +48,7 @@ export const getSummary = catchAsync(async (req: AuthRequest, res: Response) => 
 
   return res.status(200).json({
     status: "نجاح",
+    success: true,
     data: summary,
   });
 });
@@ -55,6 +59,7 @@ export const getDebtById = catchAsync(async (req: AuthRequest, res: Response) =>
 
   return res.status(200).json({
     status: "نجاح",
+    success: true,
     data: debt,
   });
 });
@@ -72,6 +77,7 @@ export const createDebtPayment = catchAsync(
 
     return res.status(201).json({
       status: "نجاح",
+      success: true,
       message: "تم تسجيل السداد بنجاح",
       data: result,
     });
@@ -91,6 +97,8 @@ export const listMemberDebts = catchAsync(
 
     return res.status(200).json({
       status: "نجاح",
+      success: true,
+      debts: result.data,
       ...result,
     });
   },
@@ -103,6 +111,7 @@ export const getMemberSummary = catchAsync(
 
     return res.status(200).json({
       status: "نجاح",
+      success: true,
       data: summary,
     });
   },
