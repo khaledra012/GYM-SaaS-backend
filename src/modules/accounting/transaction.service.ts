@@ -17,6 +17,7 @@ import {
 } from "./accounting-aggregates.util";
 import { lockCenterRow } from "./center-lock.util";
 import { toMoneyString } from "./money.util";
+import { buildOpenShiftWhere } from "./shift-status.util";
 
 interface ICreateManualTransactionInput {
   centerId: number;
@@ -49,7 +50,7 @@ class AccountingTransactionService {
       await lockCenterRow(input.centerId, transaction);
 
       const openShift = await Shift.findOne({
-        where: { centerId: input.centerId, status: "open" },
+        where: buildOpenShiftWhere(input.centerId),
         lock: true,
         transaction,
       });

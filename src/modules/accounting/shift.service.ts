@@ -10,6 +10,11 @@ import { getShiftTotals } from "./accounting-aggregates.util";
 import { lockCenterRow } from "./center-lock.util";
 import { centsToMoneyString, moneyToCents, toMoneyString } from "./money.util";
 import Shift from "./shift.model";
+import {
+  buildClosedShiftWhere,
+  buildOpenShiftWhere,
+  resolveEffectiveShiftStatus,
+} from "./shift-status.util";
 
 export interface IShiftSnapshot {
   id: number;
@@ -105,7 +110,7 @@ class ShiftService {
     return {
       id: shift.id,
       centerId: shift.centerId,
-      status: shift.status,
+      status: resolveEffectiveShiftStatus(shift),
       localDate: shift.localDate,
       startingCash: shift.startingCash,
       expectedEndingCash: shift.expectedEndingCash,
@@ -129,7 +134,7 @@ class ShiftService {
       await lockCenterRow(input.centerId, transaction);
 
       const existingOpenShift = await Shift.findOne({
-        where: { centerId: input.centerId, status: "open" },
+        where: buildOpenShiftWhere(input.centerId),
         lock: true,
         transaction,
       });
@@ -178,10 +183,12 @@ class ShiftService {
   }
 
   public async listShifts(input: IListShiftsInput) {
-    const whereClause: any = { centerId: input.centerId };
-    if (input.status) {
-      whereClause.status = input.status;
-    }
+    const whereClause: any =
+      input.status === "open"
+        ? buildOpenShiftWhere(input.centerId)
+        : input.status === "closed"
+          ? buildClosedShiftWhere(input.centerId)
+          : { centerId: input.centerId };
 
     if (input.date) {
       whereClause.localDate = input.date;
@@ -230,7 +237,7 @@ class ShiftService {
     centerName?: string,
   ): Promise<IShiftSnapshot | null> {
     const shift = await Shift.findOne({
-      where: { centerId, status: "open" },
+      where: buildOpenShiftWhere(centerId),
       order: [["openedAt", "DESC"]],
     });
 
@@ -246,7 +253,7 @@ class ShiftService {
       await lockCenterRow(input.centerId, transaction);
 
       const shift = await Shift.findOne({
-        where: { centerId: input.centerId, status: "open" },
+        where: buildOpenShiftWhere(input.centerId),
         lock: true,
         transaction,
       });

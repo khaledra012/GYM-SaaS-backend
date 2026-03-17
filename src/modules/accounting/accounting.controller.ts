@@ -138,13 +138,21 @@ export const getDashboardSummary = catchAsync(
   async (req: AuthRequest, res: Response) => {
     const query = (req as any).validated.query as IDashboardSummaryQuery;
 
-    const summary = await dashboardService.getFinancialSummary({
+    const rawSummary = await dashboardService.getFinancialSummary({
       centerId: req.center.id,
       date: query.date,
       dateFrom: query.dateFrom ?? query.startDate,
       dateTo: query.dateTo ?? query.endDate,
       centerTimezone: req.center.timezone,
     });
+
+    const summary =
+      req.actor.role === "receptionist"
+        ? dashboardService.maskFinancialSummary(rawSummary)
+        : {
+            ...rawSummary,
+            canViewFinancials: true,
+          };
 
     return res.status(200).json({
       status: "نجاح",

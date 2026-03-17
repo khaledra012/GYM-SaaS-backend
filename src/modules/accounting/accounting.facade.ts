@@ -11,6 +11,7 @@ import AccountingTransaction, {
 import Shift from "./shift.model";
 import { lockCenterRow } from "./center-lock.util";
 import { toMoneyString } from "./money.util";
+import { buildOpenShiftWhere } from "./shift-status.util";
 
 export interface IRecordAutomatedIncomeInput {
   centerId: number;
@@ -88,10 +89,7 @@ class AccountingFacade {
     transaction: Transaction,
   ): Promise<Shift> {
     const openShift = await Shift.findOne({
-      where: {
-        centerId,
-        status: "open",
-      },
+      where: buildOpenShiftWhere(centerId),
       lock: true,
       transaction,
     });

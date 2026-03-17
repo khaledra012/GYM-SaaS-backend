@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { allowRoles, protect, validate } from "../../shared";
+import { protect, validate } from "../../shared";
 import * as accountingController from "./accounting.controller";
 import { AccountingValidation } from "./accounting.schema";
 
@@ -41,7 +41,6 @@ router.get(
 
 router.get(
   "/dashboard/summary",
-  allowRoles("owner", "manager"),
   validate(AccountingValidation.dashboardSummary),
   accountingController.getDashboardSummary,
 );
