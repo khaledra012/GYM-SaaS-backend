@@ -12,6 +12,7 @@ import { registerSubscriptionModule } from "./modules/subscriptions";
 import { registerCheckinModule } from "./modules/checkins";
 import { registerAccountingModule } from "./modules/accounting";
 import { registerDebtModule } from "./modules/debts";
+import { registerStaffModule } from "./modules/staff";
 import { registerPlatformAdminModule } from "./modules/platform-admin";
 
 const app: Application = express();
@@ -40,6 +41,7 @@ app.use(express.json());
 
 // Register modules - each module self-registers its routes
 registerAuthModule(app);
+registerStaffModule(app);
 registerMemberModule(app);
 registerPlanModule(app);
 registerSubscriptionModule(app);

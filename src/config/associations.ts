@@ -6,6 +6,7 @@ import SubscriptionEvent from "../modules/subscriptions/subscription-event.model
 import Checkin from "../modules/checkins/checkin.model";
 import Shift from "../modules/accounting/shift.model";
 import AccountingTransaction from "../modules/accounting/accounting-transaction.model";
+import Staff from "../modules/staff/staff.model";
 import { initDebtModels } from "../modules/debts/debt.persistence";
 import Debt from "../modules/debts/debt.model";
 import DebtPayment from "../modules/debts/debt-payment.model";
@@ -62,6 +63,17 @@ export const setupAssociations = () => {
   // Center -> Shifts
   Center.hasMany(Shift, { foreignKey: "centerId", as: "shifts" });
   Shift.belongsTo(Center, { foreignKey: "centerId", as: "center" });
+
+  // Center -> Staff Users
+  Center.hasMany(Staff, { foreignKey: "centerId", as: "staffUsers" });
+  Staff.belongsTo(Center, { foreignKey: "centerId", as: "center" });
+
+  // Staff -> Shifts actor references
+  Staff.hasMany(Shift, { foreignKey: "openedByStaffId", as: "openedShifts" });
+  Shift.belongsTo(Staff, { foreignKey: "openedByStaffId", as: "openedByStaff" });
+
+  Staff.hasMany(Shift, { foreignKey: "closedByStaffId", as: "closedShifts" });
+  Shift.belongsTo(Staff, { foreignKey: "closedByStaffId", as: "closedByStaff" });
 
   // Shift -> Accounting Transactions
   Shift.hasMany(AccountingTransaction, {

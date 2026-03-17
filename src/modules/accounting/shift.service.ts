@@ -1,14 +1,15 @@
-﻿import { Op } from "sequelize";
+import { Op } from "sequelize";
 import sequelize from "../../config/db.config";
 import {
   AppError,
   getCurrentDateOnlyInTimezone,
   normalizeTimezone,
 } from "../../shared";
-import Shift from "./shift.model";
+import { staffReadFacade } from "../staff/staff.facade";
 import { getShiftTotals } from "./accounting-aggregates.util";
-import { centsToMoneyString, moneyToCents, toMoneyString } from "./money.util";
 import { lockCenterRow } from "./center-lock.util";
+import { centsToMoneyString, moneyToCents, toMoneyString } from "./money.util";
+import Shift from "./shift.model";
 
 export interface IShiftSnapshot {
   id: number;
@@ -22,7 +23,11 @@ export interface IShiftSnapshot {
   openedAt: Date;
   closedAt: Date | null;
   openedBy: number;
+  openedByStaffId: number | null;
+  openedByName: string;
   closedBy: number | null;
+  closedByStaffId: number | null;
+  closedByName: string | null;
   totals: {
     totalIn: string;
     totalOut: string;
@@ -34,14 +39,18 @@ export interface IShiftSnapshot {
 interface IOpenShiftInput {
   centerId: number;
   openedBy: number;
+  openedByStaffId?: number | null;
   startingCash: number;
   centerTimezone?: string;
+  centerName?: string;
 }
 
 interface ICloseShiftInput {
   centerId: number;
   closedBy: number;
+  closedByStaffId?: number | null;
   actualEndingCash: number;
+  centerName?: string;
 }
 
 interface IListShiftsInput {
@@ -52,13 +61,41 @@ interface IListShiftsInput {
   dateTo?: string;
   page: number;
   limit: number;
+  centerName?: string;
 }
 
 class ShiftService {
+  private getFallbackActorName(centerName?: string): string {
+    return centerName?.trim() || "المالك";
+  }
+
+  private async getShiftStaffNames(centerId: number, shifts: Shift[]) {
+    const staffIds = shifts
+      .flatMap((shift) => [shift.openedByStaffId, shift.closedByStaffId])
+      .filter((id): id is number => Number.isInteger(id) && Number(id) > 0);
+
+    return staffReadFacade.getStaffNamesByIds(centerId, staffIds);
+  }
+
   private mapShift(
     shift: Shift,
     totals: { totalIn: string; totalOut: string; net: string },
+    staffNames: Map<number, string>,
+    centerName?: string,
   ): IShiftSnapshot {
+    const fallbackName = this.getFallbackActorName(centerName);
+
+    const openedByName = shift.openedByStaffId
+      ? staffNames.get(shift.openedByStaffId) ?? fallbackName
+      : fallbackName;
+
+    const closedByName =
+      shift.closedBy === null
+        ? null
+        : shift.closedByStaffId
+          ? staffNames.get(shift.closedByStaffId) ?? fallbackName
+          : fallbackName;
+
     const currentExpectedCash = centsToMoneyString(
       moneyToCents(shift.startingCash) +
         moneyToCents(totals.totalIn) -
@@ -77,7 +114,11 @@ class ShiftService {
       openedAt: shift.openedAt,
       closedAt: shift.closedAt,
       openedBy: shift.openedBy,
+      openedByStaffId: shift.openedByStaffId,
+      openedByName,
       closedBy: shift.closedBy,
+      closedByStaffId: shift.closedByStaffId,
+      closedByName,
       totals,
       currentExpectedCash,
     };
@@ -114,16 +155,25 @@ class ShiftService {
           openedAt: now,
           closedAt: null,
           openedBy: input.openedBy,
+          openedByStaffId: input.openedByStaffId ?? null,
           closedBy: null,
+          closedByStaffId: null,
         },
         { transaction },
       );
 
-      return this.mapShift(shift, {
-        totalIn: "0.00",
-        totalOut: "0.00",
-        net: "0.00",
-      });
+      const staffNames = await this.getShiftStaffNames(input.centerId, [shift]);
+
+      return this.mapShift(
+        shift,
+        {
+          totalIn: "0.00",
+          totalOut: "0.00",
+          net: "0.00",
+        },
+        staffNames,
+        input.centerName,
+      );
     });
   }
 
@@ -154,11 +204,13 @@ class ShiftService {
       offset,
     });
 
+    const staffNames = await this.getShiftStaffNames(input.centerId, rows);
+
     const data = await Promise.all(
       rows.map(async (shift, index) => {
         const totals = await getShiftTotals(input.centerId, shift.id);
         return {
-          ...this.mapShift(shift, totals),
+          ...this.mapShift(shift, totals, staffNames, input.centerName),
           displayNumber: offset + index + 1,
         };
       }),
@@ -173,7 +225,10 @@ class ShiftService {
     };
   }
 
-  public async getCurrentShift(centerId: number): Promise<IShiftSnapshot | null> {
+  public async getCurrentShift(
+    centerId: number,
+    centerName?: string,
+  ): Promise<IShiftSnapshot | null> {
     const shift = await Shift.findOne({
       where: { centerId, status: "open" },
       order: [["openedAt", "DESC"]],
@@ -182,7 +237,8 @@ class ShiftService {
     if (!shift) return null;
 
     const totals = await getShiftTotals(centerId, shift.id);
-    return this.mapShift(shift, totals);
+    const staffNames = await this.getShiftStaffNames(centerId, [shift]);
+    return this.mapShift(shift, totals, staffNames, centerName);
   }
 
   public async closeShift(input: ICloseShiftInput): Promise<IShiftSnapshot> {
@@ -216,10 +272,13 @@ class ShiftService {
       shift.discrepancy = centsToMoneyString(discrepancyCents);
       shift.closedAt = new Date();
       shift.closedBy = input.closedBy;
+      shift.closedByStaffId = input.closedByStaffId ?? null;
 
       await shift.save({ transaction });
 
-      return this.mapShift(shift, totals);
+      const staffNames = await this.getShiftStaffNames(input.centerId, [shift]);
+
+      return this.mapShift(shift, totals, staffNames, input.centerName);
     });
   }
 }

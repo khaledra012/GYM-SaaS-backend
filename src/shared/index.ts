@@ -1,10 +1,17 @@
-﻿// Shared Types
-export { AuthRequest, JwtPayload } from "./types/request.types";
+// Shared Types
+export {
+  AuthRequest,
+  JwtPayload,
+  RequestActor,
+  ActorRole,
+  ActorType,
+} from "./types/request.types";
 
 // Middleware
 export { globalErrorHandler } from "./middleware/error-handler";
 export { validate } from "./middleware/validate";
 export { protect } from "./middleware/auth.guard";
+export { allowRoles } from "./middleware/role.guard";
 export { RateLimitMiddleware } from "./middleware/rate-limiter";
 
 // Utils
@@ -20,3 +27,4 @@ export {
   addDaysToDateOnly,
   dateOnlyToUtcStartOfDay,
 } from "./utils/timezone";
+

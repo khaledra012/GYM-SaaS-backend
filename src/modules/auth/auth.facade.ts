@@ -1,6 +1,7 @@
 ﻿import { Op } from "sequelize";
-import { AppError } from "../../shared";
+import { AppError, normalizeTimezone } from "../../shared";
 import Center, { CenterBillingStatus } from "./auth.model";
+import { ensureCenterBillingStatus } from "./center-billing.util";
 
 interface ICenterLookup {
   id: number;
@@ -51,6 +52,17 @@ export interface ICenterBillingSummary {
   unsubscribedCenters: number;
   trialsExpiringSoon: number;
   subscriptionsExpiringSoon: number;
+}
+
+export interface ICenterAuthSnapshot {
+  id: number;
+  name: string;
+  timezone: string;
+  billingStatus: CenterBillingStatus;
+  trialEndsAt: Date | null;
+  trialDaysLeft: number;
+  subscriptionEndsAt: Date | null;
+  subscriptionDaysLeft: number;
 }
 
 export interface IUpdateCenterBillingStatusInput {
@@ -169,6 +181,33 @@ const getTrialLabel = (
 };
 
 class AuthReadFacade {
+  public async getCenterForAccess(centerId: number): Promise<Center | null> {
+    const center = await Center.findByPk(centerId);
+    if (!center) {
+      return null;
+    }
+
+    await ensureCenterBillingStatus(center);
+    center.timezone = normalizeTimezone(center.timezone);
+    return center;
+  }
+
+  public mapCenterAuthSnapshot(center: Center): ICenterAuthSnapshot {
+    return {
+      id: center.id,
+      name: center.name,
+      timezone: normalizeTimezone(center.timezone),
+      billingStatus: center.billingStatus,
+      trialEndsAt: center.trialEndsAt ?? null,
+      trialDaysLeft: getTrialDaysLeft(center.billingStatus, center.trialEndsAt ?? null),
+      subscriptionEndsAt: center.subscriptionEndsAt ?? null,
+      subscriptionDaysLeft: getSubscriptionDaysLeft(
+        center.billingStatus,
+        center.subscriptionEndsAt ?? null,
+      ),
+    };
+  }
+
   private mapAdminCenter(center: Center): ICenterAdminListItem {
     const trialDaysLeft = getTrialDaysLeft(center.billingStatus, center.trialEndsAt ?? null);
     const subscriptionDurationDays = getSubscriptionDurationDays(
