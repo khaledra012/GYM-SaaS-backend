@@ -22,6 +22,8 @@ export interface IMemberContactLookup {
   status: MemberAttributes["status"];
 }
 
+export interface IMemberCenterContact extends IMemberContactLookup {}
+
 interface IMemberReadOptions {
   transaction?: Transaction;
   lock?: boolean;
@@ -112,6 +114,26 @@ class MemberReadFacade {
 
     const member = await Member.findOne(queryOptions);
     return (member as IMemberContactLookup | null) ?? null;
+  }
+
+  public async listContactsByCenter(
+    centerId: number,
+    options: IMemberReadOptions = {},
+  ): Promise<IMemberCenterContact[]> {
+    const queryOptions: any = {
+      attributes: ["id", "code", "name", "phone", "status"],
+      where: { centerId },
+      order: [
+        ["createdAt", "DESC"],
+        ["id", "DESC"],
+      ],
+      raw: true,
+    };
+
+    this.appendTransactionOptions(queryOptions, options);
+
+    const members = await Member.findAll(queryOptions);
+    return members as IMemberCenterContact[];
   }
 }
 

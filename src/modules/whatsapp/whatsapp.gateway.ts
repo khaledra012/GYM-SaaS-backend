@@ -37,9 +37,19 @@ const delay = (ms: number) =>
     setTimeout(resolve, ms);
   });
 
+const resolveAuthRootDirectory = (): string => {
+  const configured = String(process.env.WHATSAPP_AUTH_DIR ?? "").trim();
+  if (configured) {
+    return path.resolve(configured);
+  }
+
+  return path.join(process.cwd(), "storage", "whatsapp");
+};
+
 export class WhatsAppGateway {
   private runtimes = new Map<number, IWhatsAppGatewayRuntime>();
   private libraries: ILoadedLibraries | null = null;
+  private readonly authRootDirectory = resolveAuthRootDirectory();
 
   constructor(
     private readonly onSessionUpdate: (
@@ -76,7 +86,7 @@ export class WhatsAppGateway {
   }
 
   private getSessionDirectory(centerId: number): string {
-    return path.join(process.cwd(), "storage", "whatsapp", String(centerId));
+    return path.join(this.authRootDirectory, String(centerId));
   }
 
   private clearReconnectHandle(centerId: number) {
@@ -152,6 +162,12 @@ export class WhatsAppGateway {
       const rawUserId = String(runtime.socket?.user?.id ?? "");
       const phone = rawUserId.split(":")[0]?.replace(/\D/g, "") || null;
 
+      logger.info("تم فتح جلسة واتساب بنجاح", {
+        centerId,
+        phone,
+        userId: rawUserId || null,
+      });
+
       await this.onSessionUpdate(centerId, {
         status: "connected",
         phone,
@@ -171,9 +187,21 @@ export class WhatsAppGateway {
           update?.lastDisconnect?.error?.statusCode ??
           0,
       );
+      const disconnectMessage = String(
+        update?.lastDisconnect?.error?.message ??
+          update?.lastDisconnect?.error ??
+          "",
+      );
 
       const isLoggedOut =
         disconnectStatusCode === Number(baileys?.DisconnectReason?.loggedOut);
+
+      logger.warn("تم إغلاق جلسة واتساب", {
+        centerId,
+        disconnectStatusCode,
+        disconnectMessage: disconnectMessage || null,
+        isLoggedOut,
+      });
 
       await this.onSessionUpdate(centerId, {
         status: "disconnected",
@@ -197,6 +225,10 @@ export class WhatsAppGateway {
 
     const sessionDirectory = this.getSessionDirectory(centerId);
     await fs.mkdir(sessionDirectory, { recursive: true });
+    logger.info("تم تجهيز مسار تخزين جلسة واتساب", {
+      centerId,
+      sessionDirectory,
+    });
 
     const { state, saveCreds } = await baileys.useMultiFileAuthState(
       sessionDirectory,

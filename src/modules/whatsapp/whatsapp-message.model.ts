@@ -10,6 +10,7 @@ export interface WhatsAppMessageAttributes {
   centerId: number;
   sessionId: number | null;
   memberId: number | null;
+  campaignId: number | null;
   eventType: WhatsAppTemplateEventType;
   templateId: number | null;
   dedupeKey: string | null;
@@ -34,6 +35,7 @@ export interface WhatsAppMessageCreationAttributes
     | "id"
     | "sessionId"
     | "memberId"
+    | "campaignId"
     | "templateId"
     | "dedupeKey"
     | "failureType"
@@ -56,6 +58,7 @@ class WhatsAppMessage
   public centerId!: number;
   public sessionId!: number | null;
   public memberId!: number | null;
+  public campaignId!: number | null;
   public eventType!: WhatsAppTemplateEventType;
   public templateId!: number | null;
   public dedupeKey!: string | null;

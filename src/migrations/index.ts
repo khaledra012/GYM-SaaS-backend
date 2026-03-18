@@ -59,6 +59,10 @@ import {
   downCreateWhatsAppTables,
   upCreateWhatsAppTables,
 } from "./20260318_01_create_whatsapp_tables";
+import {
+  downCreateWhatsAppCampaigns,
+  upCreateWhatsAppCampaigns,
+} from "./20260319_01_create_whatsapp_campaigns";
 
 export const migrations: IMigration[] = [
   {
@@ -150,5 +154,11 @@ export const migrations: IMigration[] = [
     name: "Create whatsapp sessions, messages, templates, opt-ins, and logs tables",
     up: upCreateWhatsAppTables,
     down: downCreateWhatsAppTables,
+  },
+  {
+    id: "20260319_01_create_whatsapp_campaigns",
+    name: "Create whatsapp campaigns table and link campaign messages",
+    up: upCreateWhatsAppCampaigns,
+    down: downCreateWhatsAppCampaigns,
   },
 ];

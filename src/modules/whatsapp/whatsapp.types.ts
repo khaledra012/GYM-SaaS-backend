@@ -8,6 +8,18 @@ export type WhatsAppSessionStatus =
 
 export type WhatsAppModuleStatus = "healthy" | "paused";
 
+export type WhatsAppCampaignStatus =
+  | "queued"
+  | "running"
+  | "paused"
+  | "completed"
+  | "cancelled";
+
+export type WhatsAppCampaignAudienceType =
+  | "all_members"
+  | "active_subscriptions"
+  | "expired_subscriptions";
+
 export type WhatsAppMessageStatus =
   | "pending"
   | "processing"
@@ -24,7 +36,8 @@ export type WhatsAppTemplateEventType =
   | "debt_created"
   | "payment_receipt"
   | "debt_follow_up"
-  | "manual_test";
+  | "manual_test"
+  | "campaign_broadcast";
 
 export type WhatsAppDeliveryStatus =
   | "queued"

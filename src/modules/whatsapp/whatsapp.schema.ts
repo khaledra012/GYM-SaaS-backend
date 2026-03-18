@@ -14,6 +14,56 @@ const memberIdSchema = z.object({
     .positive("معرف العضو يجب أن يكون أكبر من صفر"),
 });
 
+const campaignIdSchema = z.object({
+  id: z.coerce
+    .number({ message: "معرف الحملة يجب أن يكون رقمًا" })
+    .int("معرف الحملة يجب أن يكون رقمًا صحيحًا")
+    .positive("معرف الحملة يجب أن يكون أكبر من صفر"),
+});
+
+const messageStatusSchema = z.enum(
+  [
+    "pending",
+    "processing",
+    "sent",
+    "failed_retryable",
+    "deferred",
+    "permanent_failed",
+  ],
+  {
+    message: "حالة الرسالة غير صالحة",
+  },
+);
+
+const messageEventTypeSchema = z.enum(
+  [
+    "member_welcome",
+    "subscription_expiry",
+    "debt_created",
+    "payment_receipt",
+    "debt_follow_up",
+    "manual_test",
+    "campaign_broadcast",
+  ],
+  {
+    message: "نوع الرسالة غير صالح",
+  },
+);
+
+const campaignAudienceTypeSchema = z.enum(
+  ["all_members", "active_subscriptions", "expired_subscriptions"],
+  {
+    message: "فئة الحملة غير صالحة",
+  },
+);
+
+const campaignStatusSchema = z.enum(
+  ["queued", "running", "paused", "completed", "cancelled"],
+  {
+    message: "حالة الحملة غير صالحة",
+  },
+);
+
 export class WhatsAppValidation {
   public static connectSession = z.object({
     body: z.object({}).default({}),
@@ -51,37 +101,10 @@ export class WhatsAppValidation {
     query: z.object({
       page: z.coerce.number().int().min(1).default(1),
       limit: z.coerce.number().int().min(1).max(100).default(20),
-      status: z
-        .enum(
-          [
-            "pending",
-            "processing",
-            "sent",
-            "failed_retryable",
-            "deferred",
-            "permanent_failed",
-          ],
-          {
-            message: "حالة الرسالة غير صالحة",
-          },
-        )
-        .optional(),
-      eventType: z
-        .enum(
-          [
-            "member_welcome",
-            "subscription_expiry",
-            "debt_created",
-            "payment_receipt",
-            "debt_follow_up",
-            "manual_test",
-          ],
-          {
-            message: "نوع الرسالة غير صالح",
-          },
-        )
-        .optional(),
+      status: messageStatusSchema.optional(),
+      eventType: messageEventTypeSchema.optional(),
       memberId: memberIdSchema.shape.memberId.optional(),
+      campaignId: campaignIdSchema.shape.id.optional(),
     }),
   });
 
@@ -91,19 +114,7 @@ export class WhatsAppValidation {
 
   public static createTemplate = z.object({
     body: z.object({
-      eventType: z.enum(
-        [
-          "member_welcome",
-          "subscription_expiry",
-          "debt_created",
-          "payment_receipt",
-          "debt_follow_up",
-          "manual_test",
-        ],
-        {
-          message: "نوع القالب غير صالح",
-        },
-      ),
+      eventType: messageEventTypeSchema,
       name: z
         .string({ message: "اسم القالب مطلوب" })
         .trim()
@@ -140,6 +151,67 @@ export class WhatsAppValidation {
       source: z.string().trim().max(80, "المصدر طويل جدًا").optional(),
     }),
   });
+
+  public static previewCampaign = z.object({
+    body: z.object({
+      audienceType: campaignAudienceTypeSchema,
+      message: z
+        .string({ message: "نص الرسالة مطلوب" })
+        .trim()
+        .min(1, "نص الرسالة مطلوب")
+        .max(4000, "نص الرسالة طويل جدًا"),
+      name: z
+        .string()
+        .trim()
+        .min(1, "اسم الحملة مطلوب")
+        .max(160, "اسم الحملة طويل جدًا")
+        .optional(),
+    }),
+  });
+
+  public static createCampaign = z.object({
+    body: z.object({
+      audienceType: campaignAudienceTypeSchema,
+      message: z
+        .string({ message: "نص الرسالة مطلوب" })
+        .trim()
+        .min(1, "نص الرسالة مطلوب")
+        .max(4000, "نص الرسالة طويل جدًا"),
+      name: z
+        .string()
+        .trim()
+        .min(1, "اسم الحملة مطلوب")
+        .max(160, "اسم الحملة طويل جدًا")
+        .optional(),
+    }),
+  });
+
+  public static listCampaigns = z.object({
+    query: z.object({
+      page: z.coerce.number().int().min(1).default(1),
+      limit: z.coerce.number().int().min(1).max(100).default(20),
+      status: campaignStatusSchema.optional(),
+    }),
+  });
+
+  public static getCampaignById = z.object({
+    params: campaignIdSchema,
+  });
+
+  public static pauseCampaign = z.object({
+    params: campaignIdSchema,
+    body: z.object({}).default({}),
+  });
+
+  public static resumeCampaign = z.object({
+    params: campaignIdSchema,
+    body: z.object({}).default({}),
+  });
+
+  public static cancelCampaign = z.object({
+    params: campaignIdSchema,
+    body: z.object({}).default({}),
+  });
 }
 
 export type IListWhatsAppMessagesQuery = z.infer<
@@ -157,3 +229,12 @@ export type IUpdateWhatsAppTemplateDTO = z.infer<
 export type IUpdateWhatsAppOptInDTO = z.infer<
   typeof WhatsAppValidation.updateMemberOptIn
 >["body"];
+export type IPreviewWhatsAppCampaignDTO = z.infer<
+  typeof WhatsAppValidation.previewCampaign
+>["body"];
+export type ICreateWhatsAppCampaignDTO = z.infer<
+  typeof WhatsAppValidation.createCampaign
+>["body"];
+export type IListWhatsAppCampaignsQuery = z.infer<
+  typeof WhatsAppValidation.listCampaigns
+>["query"];

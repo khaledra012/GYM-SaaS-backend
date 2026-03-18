@@ -42,4 +42,9 @@ export const DEFAULT_WHATSAPP_TEMPLATES: IDefaultWhatsAppTemplate[] = [
     name: "رسالة اختبار",
     body: "هذه رسالة اختبار من نظام {{gym_name}}.",
   },
+  {
+    eventType: "campaign_broadcast",
+    name: "حملة عامة",
+    body: "مرحبًا {{name}}، هذه رسالة من {{gym_name}}.",
+  },
 ];

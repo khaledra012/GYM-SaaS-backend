@@ -1,6 +1,8 @@
 import {
   applySpintax,
+  buildSequentialDispatchTimes,
   classifyWhatsAppFailure,
+  getRandomizedDispatchGapMs,
   getRetryDelayMinutes,
   normalizeWhatsAppPhone,
   renderAndSpinWhatsAppTemplate,
@@ -84,5 +86,19 @@ describe("whatsapp.util", () => {
 
   it("keeps spintax deterministic with injected random", () => {
     expect(applySpintax("{أهلاً|مرحبًا|يا بطل}", () => 0.99)).toBe("يا بطل");
+  });
+
+  it("builds randomized dispatch gaps within the expected window", () => {
+    const gap = getRandomizedDispatchGapMs(() => 0, 20, 60);
+    expect(gap).toBe(20000);
+  });
+
+  it("builds sequential dispatch times cumulatively", () => {
+    const baseDate = new Date("2026-03-19T10:00:00.000Z");
+    const result = buildSequentialDispatchTimes(3, baseDate, () => 0);
+
+    expect(result[0].toISOString()).toBe("2026-03-19T10:00:20.000Z");
+    expect(result[1].toISOString()).toBe("2026-03-19T10:00:40.000Z");
+    expect(result[2].toISOString()).toBe("2026-03-19T10:01:00.000Z");
   });
 });

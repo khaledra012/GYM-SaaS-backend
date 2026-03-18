@@ -67,4 +67,40 @@ router.put(
   whatsAppController.updateMemberOptIn,
 );
 
+router.post(
+  "/campaigns/preview",
+  validate(WhatsAppValidation.previewCampaign),
+  whatsAppController.previewCampaign,
+);
+router.post(
+  "/campaigns",
+  validate(WhatsAppValidation.createCampaign),
+  whatsAppController.createCampaign,
+);
+router.get(
+  "/campaigns",
+  validate(WhatsAppValidation.listCampaigns),
+  whatsAppController.listCampaigns,
+);
+router.get(
+  "/campaigns/:id",
+  validate(WhatsAppValidation.getCampaignById),
+  whatsAppController.getCampaignById,
+);
+router.post(
+  "/campaigns/:id/pause",
+  validate(WhatsAppValidation.pauseCampaign),
+  whatsAppController.pauseCampaign,
+);
+router.post(
+  "/campaigns/:id/resume",
+  validate(WhatsAppValidation.resumeCampaign),
+  whatsAppController.resumeCampaign,
+);
+router.post(
+  "/campaigns/:id/cancel",
+  validate(WhatsAppValidation.cancelCampaign),
+  whatsAppController.cancelCampaign,
+);
+
 export default router;

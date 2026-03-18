@@ -1,5 +1,6 @@
 import { DataTypes, Sequelize } from "sequelize";
 import sequelize from "../../config/db.config";
+import WhatsAppCampaign from "./whatsapp-campaign.model";
 import WhatsAppDeliveryLog from "./whatsapp-delivery-log.model";
 import WhatsAppMessage from "./whatsapp-message.model";
 import WhatsAppModuleState from "./whatsapp-module-state.model";
@@ -107,6 +108,7 @@ export const initWhatsAppModels = (db: Sequelize = sequelize) => {
           "payment_receipt",
           "debt_follow_up",
           "manual_test",
+          "campaign_broadcast",
         ),
         allowNull: false,
       },
@@ -137,6 +139,92 @@ export const initWhatsAppModels = (db: Sequelize = sequelize) => {
     },
   );
 
+  WhatsAppCampaign.init(
+    {
+      id: {
+        type: DataTypes.INTEGER,
+        autoIncrement: true,
+        primaryKey: true,
+      },
+      centerId: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        references: { model: "centers", key: "id" },
+        onDelete: "CASCADE",
+      },
+      name: {
+        type: DataTypes.STRING(160),
+        allowNull: false,
+      },
+      audienceType: {
+        type: DataTypes.ENUM(
+          "all_members",
+          "active_subscriptions",
+          "expired_subscriptions",
+        ),
+        allowNull: false,
+      },
+      messageTemplate: {
+        type: DataTypes.TEXT,
+        allowNull: false,
+      },
+      status: {
+        type: DataTypes.ENUM(
+          "queued",
+          "running",
+          "paused",
+          "completed",
+          "cancelled",
+        ),
+        allowNull: false,
+        defaultValue: "queued",
+      },
+      totalRecipients: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 0,
+        validate: {
+          min: 0,
+        },
+      },
+      createdBy: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+      },
+      launchedAt: {
+        type: DataTypes.DATE,
+        allowNull: true,
+      },
+      pausedAt: {
+        type: DataTypes.DATE,
+        allowNull: true,
+      },
+      resumedAt: {
+        type: DataTypes.DATE,
+        allowNull: true,
+      },
+      cancelledAt: {
+        type: DataTypes.DATE,
+        allowNull: true,
+      },
+      completedAt: {
+        type: DataTypes.DATE,
+        allowNull: true,
+      },
+    },
+    {
+      sequelize: db,
+      tableName: "whatsapp_campaigns",
+      timestamps: true,
+      indexes: [
+        {
+          name: "idx_whatsapp_campaigns_center_status",
+          fields: ["centerId", "status", "createdAt"],
+        },
+      ],
+    },
+  );
+
   WhatsAppMessage.init(
     {
       id: {
@@ -162,6 +250,12 @@ export const initWhatsAppModels = (db: Sequelize = sequelize) => {
         references: { model: "members", key: "id" },
         onDelete: "SET NULL",
       },
+      campaignId: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: { model: "whatsapp_campaigns", key: "id" },
+        onDelete: "SET NULL",
+      },
       eventType: {
         type: DataTypes.ENUM(
           "member_welcome",
@@ -170,6 +264,7 @@ export const initWhatsAppModels = (db: Sequelize = sequelize) => {
           "payment_receipt",
           "debt_follow_up",
           "manual_test",
+          "campaign_broadcast",
         ),
         allowNull: false,
       },
@@ -257,6 +352,10 @@ export const initWhatsAppModels = (db: Sequelize = sequelize) => {
         {
           name: "idx_whatsapp_messages_center_member",
           fields: ["centerId", "memberId", "createdAt"],
+        },
+        {
+          name: "idx_whatsapp_messages_campaign_status",
+          fields: ["campaignId", "status", "createdAt"],
         },
       ],
     },

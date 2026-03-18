@@ -38,4 +38,27 @@ describe("WhatsAppValidation", () => {
     expect(parsed.body.isOptedIn).toBe(true);
     expect(parsed.params.memberId).toBe(3);
   });
+
+  it("accepts a valid campaign creation payload", () => {
+    const parsed = WhatsAppValidation.createCampaign.parse({
+      body: {
+        audienceType: "expired_subscriptions",
+        message: "مرحبًا {{name}}",
+        name: "حملة استرجاع",
+      },
+    });
+
+    expect(parsed.body.audienceType).toBe("expired_subscriptions");
+  });
+
+  it("rejects an invalid campaign audience type", () => {
+    expect(() =>
+      WhatsAppValidation.previewCampaign.parse({
+        body: {
+          audienceType: "unknown_group",
+          message: "test",
+        },
+      }),
+    ).toThrow();
+  });
 });

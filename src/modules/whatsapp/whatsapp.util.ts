@@ -116,6 +116,34 @@ export const getRetryDelayMinutes = (attempt: number): number => {
 export const getRetryDelayMs = (attempt: number): number =>
   getRetryDelayMinutes(attempt) * 60 * 1000;
 
+export const getRandomizedDispatchGapMs = (
+  randomFn: () => number = Math.random,
+  minSeconds = 20,
+  maxSeconds = 60,
+): number => {
+  const minimum = Math.max(1, Math.floor(minSeconds));
+  const maximum = Math.max(minimum, Math.floor(maxSeconds));
+  const spread = maximum - minimum + 1;
+  const offset = Math.min(spread - 1, Math.floor(randomFn() * spread));
+  return (minimum + offset) * 1000;
+};
+
+export const buildSequentialDispatchTimes = (
+  count: number,
+  startAt: Date = new Date(),
+  randomFn: () => number = Math.random,
+): Date[] => {
+  const times: Date[] = [];
+  let cursor = startAt.getTime();
+
+  for (let index = 0; index < count; index += 1) {
+    cursor += getRandomizedDispatchGapMs(randomFn);
+    times.push(new Date(cursor));
+  }
+
+  return times;
+};
+
 export const shouldPauseGlobalModule = (input: {
   totalAttempts: number;
   failedAttempts: number;

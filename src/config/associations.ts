@@ -11,6 +11,7 @@ import { initDebtModels } from "../modules/debts/debt.persistence";
 import Debt from "../modules/debts/debt.model";
 import DebtPayment from "../modules/debts/debt-payment.model";
 import { initWhatsAppModels } from "../modules/whatsapp/whatsapp.persistence";
+import WhatsAppCampaign from "../modules/whatsapp/whatsapp-campaign.model";
 import WhatsAppSession from "../modules/whatsapp/whatsapp-session.model";
 import WhatsAppMessage from "../modules/whatsapp/whatsapp-message.model";
 import WhatsAppTemplate from "../modules/whatsapp/whatsapp-template.model";
@@ -148,6 +149,16 @@ export const setupAssociations = () => {
     as: "templateCenter",
   });
 
+  // Center -> WhatsApp Campaigns
+  Center.hasMany(WhatsAppCampaign, {
+    foreignKey: "centerId",
+    as: "whatsappCampaigns",
+  });
+  WhatsAppCampaign.belongsTo(Center, {
+    foreignKey: "centerId",
+    as: "campaignCenter",
+  });
+
   // Center -> WhatsApp Messages
   Center.hasMany(WhatsAppMessage, {
     foreignKey: "centerId",
@@ -166,6 +177,16 @@ export const setupAssociations = () => {
   WhatsAppMessage.belongsTo(Member, {
     foreignKey: "memberId",
     as: "member",
+  });
+
+  // Campaign -> WhatsApp Messages
+  WhatsAppCampaign.hasMany(WhatsAppMessage, {
+    foreignKey: "campaignId",
+    as: "messages",
+  });
+  WhatsAppMessage.belongsTo(WhatsAppCampaign, {
+    foreignKey: "campaignId",
+    as: "campaign",
   });
 
   // Session -> WhatsApp Messages

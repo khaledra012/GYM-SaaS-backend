@@ -1,7 +1,9 @@
-import { Op } from "sequelize";
+import { Op, fn, col } from "sequelize";
 import sequelize from "../../config/db.config";
 import { AppError, logger } from "../../shared";
 import { memberReadFacade } from "../member";
+import { subscriptionReadFacade } from "../subscriptions";
+import WhatsAppCampaign from "./whatsapp-campaign.model";
 import { DEFAULT_WHATSAPP_TEMPLATES } from "./whatsapp.defaults";
 import {
   IWhatsAppGatewaySessionUpdate,
@@ -14,17 +16,23 @@ import WhatsAppOptIn from "./whatsapp-opt-in.model";
 import WhatsAppSession from "./whatsapp-session.model";
 import WhatsAppTemplate from "./whatsapp-template.model";
 import {
+  ICreateWhatsAppCampaignDTO,
   ICreateWhatsAppTemplateDTO,
+  IListWhatsAppCampaignsQuery,
   IListWhatsAppMessagesQuery,
+  IPreviewWhatsAppCampaignDTO,
   IUpdateWhatsAppOptInDTO,
   IUpdateWhatsAppTemplateDTO,
 } from "./whatsapp.schema";
 import {
+  WhatsAppCampaignAudienceType,
+  WhatsAppCampaignStatus,
   WhatsAppDeliveryStatus,
   WhatsAppMessageStatus,
   WhatsAppTemplateEventType,
 } from "./whatsapp.types";
 import {
+  buildSequentialDispatchTimes,
   classifyWhatsAppFailure,
   getRetryDelayMs,
   normalizeWhatsAppPhone,
@@ -38,11 +46,13 @@ interface IQueueTemplateMessageInput {
   eventType: WhatsAppTemplateEventType;
   phone: string;
   memberId?: number | null;
+  campaignId?: number | null;
   dedupeKey?: string | null;
   templateBody?: string;
   requireOptIn?: boolean;
   variables: Record<string, string | number | null | undefined>;
   metadata?: Record<string, unknown> | null;
+  nextAttemptAt?: Date | null;
 }
 
 interface IQueueTemplateMessageResult {
@@ -50,6 +60,35 @@ interface IQueueTemplateMessageResult {
   reason?: string;
   alreadyQueued?: boolean;
   message: any | null;
+}
+
+interface ICampaignRecipient {
+  memberId: number;
+  code: string;
+  name: string;
+  phone: string;
+  normalizedPhone: string;
+  subscriptionStatus: string | null;
+}
+
+interface ICampaignAudienceResolution {
+  audienceType: WhatsAppCampaignAudienceType;
+  totalMatchedMembers: number;
+  optedInMembers: number;
+  validPhoneMembers: number;
+  recipientCount: number;
+  skippedNoOptInCount: number;
+  skippedInvalidPhoneCount: number;
+  recipients: ICampaignRecipient[];
+}
+
+interface ICampaignStats {
+  pending: number;
+  processing: number;
+  sent: number;
+  failedRetryable: number;
+  deferred: number;
+  permanentFailed: number;
 }
 
 const GLOBAL_SCOPE_KEY = "global";
@@ -180,6 +219,7 @@ class WhatsAppService {
       centerId: data.centerId,
       sessionId: data.sessionId,
       memberId: data.memberId,
+      campaignId: data.campaignId,
       eventType: data.eventType,
       templateId: data.templateId,
       phone: data.phone,
@@ -201,6 +241,14 @@ class WhatsAppService {
             code: data.member.code,
           }
         : null,
+      campaign: data.campaign
+        ? {
+            id: data.campaign.id,
+            name: data.campaign.name,
+            status: data.campaign.status,
+            audienceType: data.campaign.audienceType,
+          }
+        : null,
       session: data.session
         ? {
             id: data.session.id,
@@ -211,6 +259,149 @@ class WhatsAppService {
       createdAt: data.createdAt,
       updatedAt: data.updatedAt,
     };
+  }
+
+  private buildEmptyCampaignStats(): ICampaignStats {
+    return {
+      pending: 0,
+      processing: 0,
+      sent: 0,
+      failedRetryable: 0,
+      deferred: 0,
+      permanentFailed: 0,
+    };
+  }
+
+  private inferCampaignStatus(
+    campaign: WhatsAppCampaign,
+    stats: ICampaignStats,
+  ): WhatsAppCampaignStatus {
+    if (campaign.status === "paused" || campaign.status === "cancelled") {
+      return campaign.status;
+    }
+
+    const outstanding =
+      stats.pending + stats.processing + stats.failedRetryable + stats.deferred;
+
+    if (campaign.totalRecipients > 0 && outstanding === 0) {
+      return "completed";
+    }
+
+    if (stats.sent > 0 || stats.processing > 0) {
+      return "running";
+    }
+
+    return "queued";
+  }
+
+  private mapCampaign(
+    campaign: WhatsAppCampaign,
+    stats: ICampaignStats,
+    displayNumber?: number,
+  ) {
+    const inferredStatus = this.inferCampaignStatus(campaign, stats);
+    const deliveredCount = stats.sent;
+    const failedCount = stats.permanentFailed;
+    const inQueueCount =
+      stats.pending + stats.processing + stats.failedRetryable + stats.deferred;
+    const progressPercentage =
+      campaign.totalRecipients > 0
+        ? Math.round(((deliveredCount + failedCount) / campaign.totalRecipients) * 100)
+        : 0;
+
+    return {
+      id: campaign.id,
+      displayNumber,
+      centerId: campaign.centerId,
+      name: campaign.name,
+      audienceType: campaign.audienceType,
+      messageTemplate: campaign.messageTemplate,
+      status: inferredStatus,
+      totalRecipients: campaign.totalRecipients,
+      deliveredCount,
+      failedCount,
+      pendingCount: stats.pending,
+      processingCount: stats.processing,
+      retryableCount: stats.failedRetryable,
+      deferredCount: stats.deferred,
+      inQueueCount,
+      progressPercentage,
+      createdBy: campaign.createdBy,
+      launchedAt: campaign.launchedAt,
+      pausedAt: campaign.pausedAt,
+      resumedAt: campaign.resumedAt,
+      cancelledAt: campaign.cancelledAt,
+      completedAt:
+        inferredStatus === "completed"
+          ? campaign.completedAt ?? campaign.updatedAt ?? null
+          : campaign.completedAt,
+      createdAt: campaign.createdAt,
+      updatedAt: campaign.updatedAt,
+    };
+  }
+
+  private async getCampaignStatsMap(
+    campaignIds: number[],
+  ): Promise<Map<number, ICampaignStats>> {
+    const statsMap = new Map<number, ICampaignStats>();
+
+    for (const campaignId of campaignIds) {
+      statsMap.set(campaignId, this.buildEmptyCampaignStats());
+    }
+
+    if (campaignIds.length === 0) {
+      return statsMap;
+    }
+
+    const rows = (await WhatsAppMessage.findAll({
+      attributes: [
+        "campaignId",
+        "status",
+        [fn("COUNT", col("id")), "count"],
+      ],
+      where: {
+        campaignId: {
+          [Op.in]: campaignIds,
+        },
+      },
+      group: ["campaignId", "status"],
+      raw: true,
+    })) as unknown as Array<{
+      campaignId: number;
+      status: WhatsAppMessageStatus;
+      count: number | string;
+    }>;
+
+    for (const row of rows) {
+      const campaignId = Number(row.campaignId);
+      const target = statsMap.get(campaignId) ?? this.buildEmptyCampaignStats();
+      const count = Number(row.count);
+
+      switch (row.status) {
+        case "pending":
+          target.pending += count;
+          break;
+        case "processing":
+          target.processing += count;
+          break;
+        case "sent":
+          target.sent += count;
+          break;
+        case "failed_retryable":
+          target.failedRetryable += count;
+          break;
+        case "deferred":
+          target.deferred += count;
+          break;
+        case "permanent_failed":
+          target.permanentFailed += count;
+          break;
+      }
+
+      statsMap.set(campaignId, target);
+    }
+
+    return statsMap;
   }
 
   private async createDeliveryLog(
@@ -287,6 +478,157 @@ class WhatsAppService {
       name: defaultTemplate.name,
       body: defaultTemplate.body,
     };
+  }
+
+  private async ensureCampaignInCenter(
+    centerId: number,
+    campaignId: number,
+  ): Promise<WhatsAppCampaign> {
+    const campaign = await WhatsAppCampaign.findOne({
+      where: {
+        id: campaignId,
+        centerId,
+      },
+    });
+
+    if (!campaign) {
+      throw new AppError("الحملة غير موجودة", 404);
+    }
+
+    return campaign;
+  }
+
+  private buildCampaignName(name: string | undefined, audienceType: WhatsAppCampaignAudienceType) {
+    if (name?.trim()) {
+      return name.trim();
+    }
+
+    const labelByAudience: Record<WhatsAppCampaignAudienceType, string> = {
+      all_members: "كل الأعضاء",
+      active_subscriptions: "الاشتراكات النشطة",
+      expired_subscriptions: "الاشتراكات المنتهية",
+    };
+
+    return `حملة ${labelByAudience[audienceType]} ${new Date().toLocaleString("en-CA", {
+      timeZone: "Africa/Cairo",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    })}`;
+  }
+
+  private async resolveCampaignAudience(
+    centerId: number,
+    audienceType: WhatsAppCampaignAudienceType,
+  ): Promise<ICampaignAudienceResolution> {
+    const members = await memberReadFacade.listContactsByCenter(centerId);
+    const memberIds = members.map((member) => member.id);
+    const subscriptionsByMember = await subscriptionReadFacade.getLatestByMemberIds(
+      centerId,
+      memberIds,
+    );
+
+    const targetedMembers = members.filter((member) => {
+      if (audienceType === "all_members") {
+        return true;
+      }
+
+      const snapshot = subscriptionsByMember.get(member.id);
+      if (!snapshot) {
+        return false;
+      }
+
+      if (audienceType === "active_subscriptions") {
+        return snapshot.effectiveStatus === "active";
+      }
+
+      return snapshot.effectiveStatus === "expired";
+    });
+
+    const targetedIds = targetedMembers.map((member) => member.id);
+    const optIns = await WhatsAppOptIn.findAll({
+      where: {
+        centerId,
+        memberId: {
+          [Op.in]: targetedIds.length > 0 ? targetedIds : [0],
+        },
+        isOptedIn: true,
+      },
+      attributes: ["memberId"],
+      raw: true,
+    });
+
+    const optedInMemberIds = new Set(
+      (optIns as Array<{ memberId: number }>).map((item) => item.memberId),
+    );
+
+    const recipients: ICampaignRecipient[] = [];
+    let optedInMembers = 0;
+    let validPhoneMembers = 0;
+
+    for (const member of targetedMembers) {
+      const isOptedIn = optedInMemberIds.has(member.id);
+      if (isOptedIn) {
+        optedInMembers += 1;
+      }
+
+      const normalizedPhone = normalizeWhatsAppPhone(member.phone);
+      if (normalizedPhone) {
+        validPhoneMembers += 1;
+      }
+
+      if (!isOptedIn || !normalizedPhone) {
+        continue;
+      }
+
+      recipients.push({
+        memberId: member.id,
+        code: member.code,
+        name: member.name,
+        phone: member.phone,
+        normalizedPhone,
+        subscriptionStatus:
+          subscriptionsByMember.get(member.id)?.effectiveStatus ?? null,
+      });
+    }
+
+    return {
+      audienceType,
+      totalMatchedMembers: targetedMembers.length,
+      optedInMembers,
+      validPhoneMembers,
+      recipientCount: recipients.length,
+      skippedNoOptInCount: targetedMembers.length - optedInMembers,
+      skippedInvalidPhoneCount: Math.max(0, optedInMembers - recipients.length),
+      recipients,
+    };
+  }
+
+  private async syncCampaignStatus(campaignId: number): Promise<WhatsAppCampaign | null> {
+    const campaign = await WhatsAppCampaign.findByPk(campaignId);
+    if (!campaign) {
+      return null;
+    }
+
+    if (campaign.status === "paused" || campaign.status === "cancelled") {
+      return campaign;
+    }
+
+    const stats = (await this.getCampaignStatsMap([campaign.id])).get(campaign.id) ??
+      this.buildEmptyCampaignStats();
+    const inferredStatus = this.inferCampaignStatus(campaign, stats);
+
+    if (inferredStatus !== campaign.status) {
+      campaign.status = inferredStatus;
+      if (inferredStatus === "completed" && !campaign.completedAt) {
+        campaign.completedAt = new Date();
+      }
+      await campaign.save();
+    }
+
+    return campaign;
   }
 
   private async markMessageDeferred(
@@ -419,7 +761,7 @@ class WhatsAppService {
     );
   }
 
-  private async releaseDeferredMessages(centerId?: number) {
+  private async releaseDeferredMessages(centerId?: number, campaignId?: number) {
     const where: any = {
       status: "deferred",
     };
@@ -428,8 +770,13 @@ class WhatsAppService {
       where.centerId = centerId;
     }
 
+    if (campaignId) {
+      where.campaignId = campaignId;
+    }
+
     await WhatsAppMessage.update(
       {
+        status: "pending",
         nextAttemptAt: new Date(),
       },
       { where },
@@ -684,6 +1031,291 @@ class WhatsAppService {
     };
   }
 
+  public async previewCampaign(
+    centerId: number,
+    input: IPreviewWhatsAppCampaignDTO,
+  ) {
+    const audience = await this.resolveCampaignAudience(centerId, input.audienceType);
+
+    return {
+      name: this.buildCampaignName(input.name, input.audienceType),
+      audienceType: input.audienceType,
+      message: input.message,
+      totalMatchedMembers: audience.totalMatchedMembers,
+      optedInMembers: audience.optedInMembers,
+      validPhoneMembers: audience.validPhoneMembers,
+      recipientCount: audience.recipientCount,
+      skippedNoOptInCount: audience.skippedNoOptInCount,
+      skippedInvalidPhoneCount: audience.skippedInvalidPhoneCount,
+      sampleRecipients: audience.recipients.slice(0, 5).map((recipient) => ({
+        memberId: recipient.memberId,
+        name: recipient.name,
+        phone: recipient.phone,
+        code: recipient.code,
+        subscriptionStatus: recipient.subscriptionStatus,
+      })),
+      supportedVariables: ["{{name}}", "{{member_code}}", "{{phone}}", "{{gym_name}}"],
+    };
+  }
+
+  public async createCampaign(
+    centerId: number,
+    createdBy: number | null,
+    gymName: string,
+    input: ICreateWhatsAppCampaignDTO,
+  ) {
+    const audience = await this.resolveCampaignAudience(centerId, input.audienceType);
+
+    if (audience.recipientCount === 0) {
+      throw new AppError(
+        "لا يوجد أعضاء مؤهلون لهذه الحملة بعد تطبيق الفلتر واشتراط الموافقة وصحة رقم الهاتف",
+        400,
+      );
+    }
+
+    const campaignName = this.buildCampaignName(input.name, input.audienceType);
+    const scheduledTimes = buildSequentialDispatchTimes(audience.recipientCount);
+
+    return sequelize.transaction(async (transaction) => {
+      const campaign = await WhatsAppCampaign.create(
+        {
+          centerId,
+          name: campaignName,
+          audienceType: input.audienceType,
+          messageTemplate: input.message.trim(),
+          status: "queued",
+          totalRecipients: audience.recipientCount,
+          createdBy,
+          launchedAt: new Date(),
+        },
+        { transaction },
+      );
+
+      const messages = audience.recipients.map((recipient, index) => ({
+        centerId,
+        sessionId: null,
+        memberId: recipient.memberId,
+        campaignId: campaign.id,
+        eventType: "campaign_broadcast" as const,
+        templateId: null,
+        dedupeKey: `campaign:${campaign.id}:member:${recipient.memberId}`,
+        phone: recipient.normalizedPhone,
+        renderedBody: renderAndSpinWhatsAppTemplate(input.message.trim(), {
+          name: recipient.name,
+          member_code: recipient.code,
+          phone: recipient.phone,
+          gym_name: gymName,
+        }).trim(),
+        status: "pending" as const,
+        nextAttemptAt: scheduledTimes[index],
+        metadata: {
+          source: "campaign_broadcast",
+          campaignId: campaign.id,
+          audienceType: input.audienceType,
+        },
+      }));
+
+      for (const messagePayload of messages) {
+        const createdMessage = await WhatsAppMessage.create(messagePayload, {
+          transaction,
+        });
+
+        await WhatsAppDeliveryLog.create(
+          {
+            centerId,
+            messageId: createdMessage.id,
+            sessionId: null,
+            status: "queued",
+            details: "تمت إضافة الرسالة إلى طابور الحملة",
+          },
+          { transaction },
+        );
+      }
+
+      const stats = this.buildEmptyCampaignStats();
+      stats.pending = audience.recipientCount;
+
+      return {
+        campaign: this.mapCampaign(campaign, stats),
+        preview: {
+          totalMatchedMembers: audience.totalMatchedMembers,
+          optedInMembers: audience.optedInMembers,
+          validPhoneMembers: audience.validPhoneMembers,
+          recipientCount: audience.recipientCount,
+          skippedNoOptInCount: audience.skippedNoOptInCount,
+          skippedInvalidPhoneCount: audience.skippedInvalidPhoneCount,
+        },
+      };
+    });
+  }
+
+  public async listCampaigns(
+    centerId: number,
+    query: IListWhatsAppCampaignsQuery,
+  ) {
+    const where: any = { centerId };
+    if (query.status) {
+      where.status = query.status;
+    }
+
+    const offset = (query.page - 1) * query.limit;
+    const { rows, count } = await WhatsAppCampaign.findAndCountAll({
+      where,
+      order: [
+        ["createdAt", "DESC"],
+        ["id", "DESC"],
+      ],
+      limit: query.limit,
+      offset,
+    });
+
+    const statsMap = await this.getCampaignStatsMap(rows.map((campaign) => campaign.id));
+
+    return {
+      total: count,
+      page: query.page,
+      limit: query.limit,
+      totalPages: Math.max(1, Math.ceil(count / query.limit)),
+      data: rows.map((campaign, index) =>
+        this.mapCampaign(
+          campaign,
+          statsMap.get(campaign.id) ?? this.buildEmptyCampaignStats(),
+          offset + index + 1,
+        ),
+      ),
+    };
+  }
+
+  public async getCampaignById(centerId: number, campaignId: number) {
+    const campaign = await this.ensureCampaignInCenter(centerId, campaignId);
+    await this.syncCampaignStatus(campaign.id);
+    const freshCampaign = await this.ensureCampaignInCenter(centerId, campaignId);
+    const stats = (await this.getCampaignStatsMap([campaign.id])).get(campaign.id) ??
+      this.buildEmptyCampaignStats();
+
+    return this.mapCampaign(freshCampaign, stats);
+  }
+
+  public async pauseCampaign(centerId: number, campaignId: number) {
+    const campaign = await this.ensureCampaignInCenter(centerId, campaignId);
+
+    if (campaign.status === "cancelled") {
+      throw new AppError("لا يمكن إيقاف حملة ملغاة", 400);
+    }
+
+    if (campaign.status === "completed") {
+      throw new AppError("الحملة مكتملة بالفعل", 400);
+    }
+
+    campaign.status = "paused";
+    campaign.pausedAt = new Date();
+    await campaign.save();
+
+    await WhatsAppMessage.update(
+      {
+        status: "deferred",
+        failureType: "retryable",
+        failureCode: "campaign_paused",
+        failureReason: "تم إيقاف الحملة مؤقتًا",
+        nextAttemptAt: null,
+      },
+      {
+        where: {
+          centerId,
+          campaignId,
+          status: {
+            [Op.in]: ["pending", "failed_retryable", "deferred"],
+          },
+        },
+      },
+    );
+
+    const stats = (await this.getCampaignStatsMap([campaign.id])).get(campaign.id) ??
+      this.buildEmptyCampaignStats();
+
+    return this.mapCampaign(campaign, stats);
+  }
+
+  public async resumeCampaign(centerId: number, campaignId: number) {
+    const campaign = await this.ensureCampaignInCenter(centerId, campaignId);
+
+    if (campaign.status !== "paused") {
+      throw new AppError("لا يمكن استئناف حملة غير موقوفة", 400);
+    }
+
+    const deferredMessages = await WhatsAppMessage.findAll({
+      where: {
+        centerId,
+        campaignId,
+        status: "deferred",
+      },
+      order: [
+        ["createdAt", "ASC"],
+        ["id", "ASC"],
+      ],
+    });
+
+    const scheduledTimes = buildSequentialDispatchTimes(deferredMessages.length);
+
+    for (const [index, message] of deferredMessages.entries()) {
+      message.status = "pending";
+      message.failureType = null;
+      message.failureCode = null;
+      message.failureReason = null;
+      message.nextAttemptAt = scheduledTimes[index] ?? new Date();
+      await message.save();
+    }
+
+    campaign.status = deferredMessages.length > 0 ? "queued" : "running";
+    campaign.resumedAt = new Date();
+    await campaign.save();
+
+    const stats = (await this.getCampaignStatsMap([campaign.id])).get(campaign.id) ??
+      this.buildEmptyCampaignStats();
+
+    return this.mapCampaign(campaign, stats);
+  }
+
+  public async cancelCampaign(centerId: number, campaignId: number) {
+    const campaign = await this.ensureCampaignInCenter(centerId, campaignId);
+
+    if (campaign.status === "cancelled") {
+      throw new AppError("الحملة ملغاة بالفعل", 400);
+    }
+
+    if (campaign.status === "completed") {
+      throw new AppError("لا يمكن إلغاء حملة مكتملة", 400);
+    }
+
+    campaign.status = "cancelled";
+    campaign.cancelledAt = new Date();
+    await campaign.save();
+
+    await WhatsAppMessage.update(
+      {
+        status: "permanent_failed",
+        failureType: "fatal",
+        failureCode: "campaign_cancelled",
+        failureReason: "تم إلغاء الحملة قبل الإرسال",
+        nextAttemptAt: null,
+      },
+      {
+        where: {
+          centerId,
+          campaignId,
+          status: {
+            [Op.in]: ["pending", "failed_retryable", "deferred"],
+          },
+        },
+      },
+    );
+
+    const stats = (await this.getCampaignStatsMap([campaign.id])).get(campaign.id) ??
+      this.buildEmptyCampaignStats();
+
+    return this.mapCampaign(campaign, stats);
+  }
+
   public async queueTemplateMessage(
     input: IQueueTemplateMessageInput,
   ): Promise<IQueueTemplateMessageResult> {
@@ -739,13 +1371,14 @@ class WhatsAppService {
       centerId: input.centerId,
       sessionId: null,
       memberId: input.memberId ?? null,
+      campaignId: input.campaignId ?? null,
       eventType: input.eventType,
       templateId: resolvedTemplate.templateId,
       dedupeKey: input.dedupeKey ?? null,
       phone: normalizedPhone,
       renderedBody,
       status: "pending",
-      nextAttemptAt: new Date(),
+      nextAttemptAt: input.nextAttemptAt ?? new Date(),
       metadata: input.metadata ?? null,
     });
 
@@ -801,6 +1434,10 @@ class WhatsAppService {
       where.memberId = query.memberId;
     }
 
+    if (query.campaignId) {
+      where.campaignId = query.campaignId;
+    }
+
     const offset = (query.page - 1) * query.limit;
 
     const { rows, count } = await WhatsAppMessage.findAndCountAll({
@@ -809,6 +1446,11 @@ class WhatsAppService {
         {
           association: "member",
           attributes: ["id", "name", "phone", "code"],
+          required: false,
+        },
+        {
+          association: "campaign",
+          attributes: ["id", "name", "status", "audienceType"],
           required: false,
         },
         {
@@ -960,6 +1602,38 @@ class WhatsAppService {
   }
 
   private async processMessage(message: WhatsAppMessage): Promise<void> {
+    if (message.campaignId) {
+      const campaign = await WhatsAppCampaign.findByPk(message.campaignId);
+
+      if (!campaign) {
+        message.campaignId = null;
+        await message.save();
+      } else if (campaign.status === "paused") {
+        await this.markMessageDeferred(
+          message,
+          message.sessionId,
+          "الحملة موقوفة مؤقتًا",
+        );
+        return;
+      } else if (campaign.status === "cancelled") {
+        message.status = "permanent_failed";
+        message.failureType = "fatal";
+        message.failureCode = "campaign_cancelled";
+        message.failureReason = "تم إلغاء الحملة قبل إرسال الرسالة";
+        message.nextAttemptAt = null;
+        await message.save();
+
+        await this.createDeliveryLog(
+          message.centerId,
+          message.id,
+          message.sessionId,
+          "permanent_failed",
+          "تم إلغاء الحملة قبل إرسال الرسالة",
+        );
+        return;
+      }
+    }
+
     const moduleState = await this.ensureModuleState();
     if (moduleState.status === "paused") {
       await this.markMessageDeferred(
@@ -999,6 +1673,14 @@ class WhatsAppService {
 
     const attempts = await this.markMessageProcessing(message, session.id);
 
+    if (message.campaignId) {
+      const campaign = await WhatsAppCampaign.findByPk(message.campaignId);
+      if (campaign && campaign.status === "queued") {
+        campaign.status = "running";
+        await campaign.save();
+      }
+    }
+
     try {
       const result = await this.gateway.sendText(
         message.centerId,
@@ -1007,9 +1689,15 @@ class WhatsAppService {
       );
 
       await this.markMessageSent(message, session.id, result.messageId);
+      if (message.campaignId) {
+        await this.syncCampaignStatus(message.campaignId);
+      }
     } catch (error) {
       const failure = classifyWhatsAppFailure(error);
       await this.markMessageFailed(message, session.id, failure, attempts);
+      if (message.campaignId) {
+        await this.syncCampaignStatus(message.campaignId);
+      }
       await this.evaluateSessionHealth(message.centerId, session.id);
       await this.evaluateGlobalPauseGuard();
     }
