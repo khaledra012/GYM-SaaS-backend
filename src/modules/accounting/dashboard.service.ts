@@ -11,6 +11,7 @@ import {
 import { centsToMoneyString, moneyToCents } from "./money.util";
 import { debtReadFacade } from "../debts/debt.facade";
 import { logger } from "../../shared";
+import { buildOpenShiftWhere } from "./shift-status.util";
 
 interface IFinancialSummaryInput {
   centerId: number;
@@ -95,10 +96,7 @@ class DashboardService {
     const mappedTotals = this.mapPeriodTotals(periodTotals);
 
     const openShift = await Shift.findOne({
-      where: {
-        centerId: input.centerId,
-        status: "open",
-      },
+      where: buildOpenShiftWhere(input.centerId),
       order: [["openedAt", "DESC"]],
     });
 
@@ -143,6 +141,45 @@ class DashboardService {
         totalOut: shiftTotals.totalOut,
         net: shiftTotals.net,
       },
+    };
+  }
+
+  public maskFinancialSummary(summary: any) {
+    return {
+      ...summary,
+      canViewFinancials: false,
+      income: null,
+      expenses: null,
+      netProfit: null,
+      totalIn: null,
+      totalOut: null,
+      net: null,
+      currentDrawerCash: null,
+      debtsSummary: summary.debtsSummary
+        ? {
+            ...summary.debtsSummary,
+            totalOriginalAmountCents: null,
+            totalPaidAmountCents: null,
+            totalRemainingAmountCents: null,
+            totalOriginalAmount: null,
+            totalPaidAmount: null,
+            totalRemainingAmount: null,
+            unpaidCount: null,
+            partiallyPaidCount: null,
+            paidCount: null,
+            outstandingDebtsCount: null,
+            membersWithOutstandingDebtsCount: null,
+          }
+        : null,
+      currentShift: summary.currentShift
+        ? {
+            ...summary.currentShift,
+            startingCash: null,
+            totalIn: null,
+            totalOut: null,
+            net: null,
+          }
+        : null,
     };
   }
 }

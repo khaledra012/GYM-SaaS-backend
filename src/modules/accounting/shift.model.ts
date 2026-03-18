@@ -15,7 +15,9 @@ export interface ShiftAttributes {
   openedAt: Date;
   closedAt: Date | null;
   openedBy: number;
+  openedByStaffId: number | null;
   closedBy: number | null;
+  closedByStaffId: number | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -27,8 +29,10 @@ export interface ShiftCreationAttributes
     | "status"
     | "actualEndingCash"
     | "discrepancy"
+    | "openedByStaffId"
     | "closedAt"
     | "closedBy"
+    | "closedByStaffId"
     | "createdAt"
     | "updatedAt"
   > {}
@@ -48,7 +52,9 @@ class Shift
   public openedAt!: Date;
   public closedAt!: Date | null;
   public openedBy!: number;
+  public openedByStaffId!: number | null;
   public closedBy!: number | null;
+  public closedByStaffId!: number | null;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -109,10 +115,22 @@ Shift.init(
       references: { model: "centers", key: "id" },
       onDelete: "RESTRICT",
     },
+    openedByStaffId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: { model: "staff_users", key: "id" },
+      onDelete: "SET NULL",
+    },
     closedBy: {
       type: DataTypes.INTEGER,
       allowNull: true,
       references: { model: "centers", key: "id" },
+      onDelete: "SET NULL",
+    },
+    closedByStaffId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: { model: "staff_users", key: "id" },
       onDelete: "SET NULL",
     },
   },
@@ -123,7 +141,13 @@ Shift.init(
     validate: {
       statusConsistency(this: Shift) {
         if (this.status === "open") {
-          if (this.closedAt !== null || this.actualEndingCash !== null || this.discrepancy !== null) {
+          if (
+            this.closedAt !== null ||
+            this.actualEndingCash !== null ||
+            this.discrepancy !== null ||
+            this.closedBy !== null ||
+            this.closedByStaffId !== null
+          ) {
             throw new Error("الوردية المفتوحة لا يجب أن تحتوي على بيانات إغلاق");
           }
         }
@@ -147,6 +171,14 @@ Shift.init(
       {
         name: "idx_shifts_center_opened_at",
         fields: ["centerId", "openedAt"],
+      },
+      {
+        name: "idx_shifts_opened_by_staff",
+        fields: ["openedByStaffId"],
+      },
+      {
+        name: "idx_shifts_closed_by_staff",
+        fields: ["closedByStaffId"],
       },
     ],
   },

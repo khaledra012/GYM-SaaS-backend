@@ -51,6 +51,10 @@ import {
   downAddRefundedSubscriptionEvent,
   upAddRefundedSubscriptionEvent,
 } from "./20260313_02_add_refunded_subscription_event";
+import {
+  downCreateStaffUsersAndShiftStaffRefs,
+  upCreateStaffUsersAndShiftStaffRefs,
+} from "./20260317_01_create_staff_users_and_shift_staff_refs";
 
 export const migrations: IMigration[] = [
   {
@@ -130,5 +134,11 @@ export const migrations: IMigration[] = [
     name: "Add refunded subscription event type",
     up: upAddRefundedSubscriptionEvent,
     down: downAddRefundedSubscriptionEvent,
+  },
+  {
+    id: "20260317_01_create_staff_users_and_shift_staff_refs",
+    name: "Create staff_users table and add shift staff references",
+    up: upCreateStaffUsersAndShiftStaffRefs,
+    down: downCreateStaffUsersAndShiftStaffRefs,
   },
 ];

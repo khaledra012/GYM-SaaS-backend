@@ -123,9 +123,13 @@ class AuthService {
       );
     }
 
-    const token = jwt.sign({ id: center.id }, process.env.JWT_SECRET as string, {
-      expiresIn: "1d",
-    });
+    const token = jwt.sign(
+      { id: center.id, type: "center" },
+      process.env.JWT_SECRET as string,
+      {
+        expiresIn: "1d",
+      },
+    );
 
     if (center.passwordResetToken) {
       center.passwordResetToken = null;
@@ -135,6 +139,15 @@ class AuthService {
 
     return {
       token,
+      actor: {
+        id: center.id,
+        type: "center" as const,
+        role: "owner" as const,
+        centerId: center.id,
+        name: center.name,
+        email: center.email,
+        staffId: null,
+      },
       center: {
         id: center.id,
         name: center.name,
