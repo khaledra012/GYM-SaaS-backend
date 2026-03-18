@@ -548,21 +548,25 @@ class WhatsAppService {
     });
 
     const targetedIds = targetedMembers.map((member) => member.id);
-    const optIns = await WhatsAppOptIn.findAll({
-      where: {
-        centerId,
-        memberId: {
-          [Op.in]: targetedIds.length > 0 ? targetedIds : [0],
-        },
-        isOptedIn: true,
-      },
-      attributes: ["memberId"],
-      raw: true,
-    });
+    const optedInMemberIds = new Set<number>();
 
-    const optedInMemberIds = new Set(
-      (optIns as Array<{ memberId: number }>).map((item) => item.memberId),
-    );
+    if (targetedIds.length > 0) {
+      const optIns = await WhatsAppOptIn.findAll({
+        where: {
+          centerId,
+          memberId: {
+            [Op.in]: targetedIds,
+          },
+          isOptedIn: true,
+        },
+        attributes: ["memberId"],
+        raw: true,
+      });
+
+      for (const item of optIns as Array<{ memberId: number }>) {
+        optedInMemberIds.add(item.memberId);
+      }
+    }
 
     const recipients: ICampaignRecipient[] = [];
     let optedInMembers = 0;
@@ -579,7 +583,7 @@ class WhatsAppService {
         validPhoneMembers += 1;
       }
 
-      if (!isOptedIn || !normalizedPhone) {
+      if (!normalizedPhone) {
         continue;
       }
 
@@ -600,8 +604,8 @@ class WhatsAppService {
       optedInMembers,
       validPhoneMembers,
       recipientCount: recipients.length,
-      skippedNoOptInCount: targetedMembers.length - optedInMembers,
-      skippedInvalidPhoneCount: Math.max(0, optedInMembers - recipients.length),
+      skippedNoOptInCount: 0,
+      skippedInvalidPhoneCount: Math.max(0, targetedMembers.length - recipients.length),
       recipients,
     };
   }
@@ -1068,7 +1072,7 @@ class WhatsAppService {
 
     if (audience.recipientCount === 0) {
       throw new AppError(
-        "لا يوجد أعضاء مؤهلون لهذه الحملة بعد تطبيق الفلتر واشتراط الموافقة وصحة رقم الهاتف",
+        "لا يوجد أعضاء مؤهلون لهذه الحملة بعد تطبيق الفلتر وصحة رقم الهاتف",
         400,
       );
     }
