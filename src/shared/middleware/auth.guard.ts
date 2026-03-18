@@ -36,18 +36,20 @@ export const protect = catchAsync(
         where: {
           id: decoded.staffId,
           centerId: decoded.centerId,
+          status: "active",
         },
+        include: [
+          {
+            association: "center",
+          },
+        ],
       });
 
       if (!staff) {
         return next(new AppError("هذا الحساب لم يعد متاحًا", 401));
       }
 
-      if (staff.status !== "active") {
-        return next(new AppError("حساب الموظف غير مفعل", 403));
-      }
-
-      currentCenter = await Center.findByPk(staff.centerId);
+      currentCenter = (staff as any).center as Center | null;
       if (!currentCenter) {
         return next(new AppError("هذا الحساب لم يعد متاحًا", 401));
       }
