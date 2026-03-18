@@ -52,6 +52,7 @@ class WhatsAppCommandFacade {
       eventType: "member_welcome",
       memberId: member.id,
       phone: member.phone,
+      requireOptIn: false,
       dedupeKey: `member-welcome:${member.id}`,
       variables: {
         name: member.name,
@@ -78,6 +79,7 @@ class WhatsAppCommandFacade {
       eventType: "debt_created",
       memberId: member.id,
       phone: member.phone,
+      requireOptIn: false,
       dedupeKey: input.dedupeKey,
       variables: {
         name: member.name,
@@ -106,6 +108,7 @@ class WhatsAppCommandFacade {
       eventType: "payment_receipt",
       memberId: member.id,
       phone: member.phone,
+      requireOptIn: false,
       dedupeKey: input.dedupeKey,
       variables: {
         name: member.name,
@@ -134,6 +137,7 @@ class WhatsAppCommandFacade {
       eventType: "debt_follow_up",
       memberId: member.id,
       phone: member.phone,
+      requireOptIn: false,
       dedupeKey: input.dedupeKey,
       variables: {
         name: member.name,
@@ -175,6 +179,7 @@ class WhatsAppCommandFacade {
             eventType: "subscription_expiry",
             memberId: item.member.id,
             phone: item.member.phone,
+            requireOptIn: false,
             dedupeKey: `subscription-expiry:${item.id}:${localDate}`,
             variables: {
               name: item.member.name,
