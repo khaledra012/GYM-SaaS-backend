@@ -1,5 +1,5 @@
 import { Op } from "sequelize";
-import { AppError } from "../../shared";
+import { AppError, logger } from "../../shared";
 import bwipjs from "bwip-js";
 import Member, { MemberCreationAttributes } from "./member.model";
 import {
@@ -13,6 +13,7 @@ import {
 } from "../subscriptions/subscription.facade";
 import { checkinReadFacade } from "../checkins/checkin.facade";
 import { debtReadFacade } from "../debts/debt.facade";
+import { whatsAppCommandFacade } from "../whatsapp";
 
 type MemberStatusFilter = "active" | "inactive" | "rejected";
 type SubscriptionStatusFilter =
@@ -170,7 +171,22 @@ class MemberService {
       code,
     };
 
-    return await Member.create(safeData);
+    const member = await Member.create(safeData);
+
+    void whatsAppCommandFacade
+      .queueWelcomeMessage({
+        centerId,
+        memberId: member.id,
+      })
+      .catch((error) => {
+        logger.error("فشل تجهيز رسالة الترحيب عبر واتساب", {
+          centerId,
+          memberId: member.id,
+          error: String(error),
+        });
+      });
+
+    return member;
   }
 
   public async getAllMembers(

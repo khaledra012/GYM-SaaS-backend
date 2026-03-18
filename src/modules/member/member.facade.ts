@@ -14,6 +14,14 @@ export interface IMemberLookupByCode {
   status: MemberAttributes["status"];
 }
 
+export interface IMemberContactLookup {
+  id: number;
+  code: string;
+  name: string;
+  phone: string;
+  status: MemberAttributes["status"];
+}
+
 interface IMemberReadOptions {
   transaction?: Transaction;
   lock?: boolean;
@@ -87,6 +95,23 @@ class MemberReadFacade {
     );
 
     return affectedRows > 0;
+  }
+
+  public async findContactByIdInCenter(
+    memberId: number,
+    centerId: number,
+    options: IMemberReadOptions = {},
+  ): Promise<IMemberContactLookup | null> {
+    const queryOptions: any = {
+      attributes: ["id", "code", "name", "phone", "status"],
+      where: { id: memberId, centerId },
+      raw: true,
+    };
+
+    this.appendTransactionOptions(queryOptions, options);
+
+    const member = await Member.findOne(queryOptions);
+    return (member as IMemberContactLookup | null) ?? null;
   }
 }
 

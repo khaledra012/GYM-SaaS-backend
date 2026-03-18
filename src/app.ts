@@ -14,6 +14,7 @@ import { registerAccountingModule } from "./modules/accounting";
 import { registerDebtModule } from "./modules/debts";
 import { registerStaffModule } from "./modules/staff";
 import { registerPlatformAdminModule } from "./modules/platform-admin";
+import { registerWhatsAppModule } from "./modules/whatsapp";
 
 const app: Application = express();
 
@@ -48,6 +49,7 @@ registerSubscriptionModule(app);
 registerCheckinModule(app);
 registerAccountingModule(app);
 registerDebtModule(app);
+registerWhatsAppModule(app);
 registerPlatformAdminModule(app);
 
 // 404 catch-all

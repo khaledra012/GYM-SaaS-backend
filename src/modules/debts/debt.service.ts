@@ -8,9 +8,15 @@ import {
   WhereOptions,
 } from "sequelize";
 import sequelize from "../../config/db.config";
-import { AppError, getDateOnlyInTimezone, normalizeTimezone } from "../../shared";
+import {
+  AppError,
+  getDateOnlyInTimezone,
+  logger,
+  normalizeTimezone,
+} from "../../shared";
 import { memberReadFacade } from "../member/member.facade";
 import { accountingFacade } from "../accounting/accounting.facade";
+import { whatsAppCommandFacade } from "../whatsapp";
 import Member from "../member/member.model";
 import Debt from "./debt.model";
 import DebtPayment from "./debt-payment.model";
@@ -520,7 +526,7 @@ class DebtService {
       centerTimezone?: string;
     },
   ) {
-    return sequelize.transaction(async (transaction) => {
+    const result = await sequelize.transaction(async (transaction) => {
       const debt = await this.createDebtRecord(
         {
           centerId: input.centerId,
@@ -548,6 +554,24 @@ class DebtService {
 
       return this.mapDebt(reloaded || debt);
     });
+
+    void whatsAppCommandFacade
+      .queueDebtCreatedMessage({
+        centerId: input.centerId,
+        memberId: result.memberId,
+        amountCents: result.originalAmountCents,
+        outstandingAmountCents: result.remainingAmountCents,
+        dedupeKey: `debt-created:${result.id}`,
+      })
+      .catch((error) => {
+        logger.error("فشل تجهيز رسالة مديونية جديدة عبر واتساب", {
+          centerId: input.centerId,
+          debtId: result.id,
+          error: String(error),
+        });
+      });
+
+    return result;
   }
 
   public async createAutomatedDebt(input: ICreateAutomatedDebtInput) {
@@ -556,7 +580,7 @@ class DebtService {
         return null;
       }
 
-      return this.createDebtRecord(
+      const debt = await this.createDebtRecord(
         {
           centerId: input.centerId,
           memberId: input.memberId,
@@ -572,6 +596,26 @@ class DebtService {
         },
         transaction,
       );
+
+      transaction.afterCommit(() => {
+        void whatsAppCommandFacade
+          .queueDebtCreatedMessage({
+            centerId: input.centerId,
+            memberId: input.memberId,
+            amountCents: input.amountCents,
+            outstandingAmountCents: debt.remainingAmountCents,
+            dedupeKey: `debt-created:${debt.id}`,
+          })
+          .catch((error) => {
+            logger.error("فشل تجهيز رسالة المديونية التلقائية عبر واتساب", {
+              centerId: input.centerId,
+              debtId: debt.id,
+              error: String(error),
+            });
+          });
+      });
+
+      return debt;
     });
   }
 
@@ -722,6 +766,27 @@ class DebtService {
         ],
         transaction,
       });
+
+      if (input.type === "cash") {
+        transaction.afterCommit(() => {
+          void whatsAppCommandFacade
+            .queuePaymentReceipt({
+              centerId,
+              memberId: debt.memberId,
+              amountCents: input.amountCents,
+              remainingBalanceCents: debt.remainingAmountCents,
+              dedupeKey: `debt-payment:${debt.id}:${payment.id}`,
+            })
+            .catch((error) => {
+              logger.error("فشل تجهيز إيصال سداد المديونية عبر واتساب", {
+                centerId,
+                debtId: debt.id,
+                paymentId: payment.id,
+                error: String(error),
+              });
+            });
+        });
+      }
 
       return {
         debt: this.mapDebt(reloaded || debt),
