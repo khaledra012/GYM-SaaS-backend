@@ -11,7 +11,7 @@ export const DEFAULT_WHATSAPP_TEMPLATES: IDefaultWhatsAppTemplate[] = [
     eventType: "member_welcome",
     name: "رسالة ترحيب",
     body:
-      "{أهلاً|مرحبًا|يا بطل} {{name}} في {{gym_name}}. تم تسجيلك بنجاح ونورتنا.",
+      "{أهلاً|مرحبًا|يا بطل} {{name}} في {{gym_name}}. تم تسجيلك بنجاح ونورتنا. كود العضوية الخاص بك هو {{member_code}}.",
   },
   {
     eventType: "subscription_expiry",

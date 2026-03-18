@@ -57,6 +57,7 @@ class WhatsAppCommandFacade {
       variables: {
         name: member.name,
         gym_name: center.name,
+        member_code: member.code,
       },
       metadata: {
         source: "member_created",
