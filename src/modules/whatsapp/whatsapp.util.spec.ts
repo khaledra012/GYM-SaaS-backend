@@ -95,10 +95,10 @@ describe("whatsapp.util", () => {
 
   it("builds sequential dispatch times cumulatively", () => {
     const baseDate = new Date("2026-03-19T10:00:00.000Z");
-    const result = buildSequentialDispatchTimes(3, baseDate, () => 0);
+    const result = buildSequentialDispatchTimes(3, baseDate, () => 0, 60, 120);
 
-    expect(result[0].toISOString()).toBe("2026-03-19T10:00:20.000Z");
-    expect(result[1].toISOString()).toBe("2026-03-19T10:00:40.000Z");
-    expect(result[2].toISOString()).toBe("2026-03-19T10:01:00.000Z");
+    expect(result[0].toISOString()).toBe("2026-03-19T10:01:00.000Z");
+    expect(result[1].toISOString()).toBe("2026-03-19T10:02:00.000Z");
+    expect(result[2].toISOString()).toBe("2026-03-19T10:03:00.000Z");
   });
 });

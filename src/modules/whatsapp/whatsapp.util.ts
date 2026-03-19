@@ -132,12 +132,14 @@ export const buildSequentialDispatchTimes = (
   count: number,
   startAt: Date = new Date(),
   randomFn: () => number = Math.random,
+  minSeconds = 20,
+  maxSeconds = 60,
 ): Date[] => {
   const times: Date[] = [];
   let cursor = startAt.getTime();
 
   for (let index = 0; index < count; index += 1) {
-    cursor += getRandomizedDispatchGapMs(randomFn);
+    cursor += getRandomizedDispatchGapMs(randomFn, minSeconds, maxSeconds);
     times.push(new Date(cursor));
   }
 
