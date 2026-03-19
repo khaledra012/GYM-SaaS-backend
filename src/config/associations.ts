@@ -10,10 +10,18 @@ import Staff from "../modules/staff/staff.model";
 import { initDebtModels } from "../modules/debts/debt.persistence";
 import Debt from "../modules/debts/debt.model";
 import DebtPayment from "../modules/debts/debt-payment.model";
+import { initWhatsAppModels } from "../modules/whatsapp/whatsapp.persistence";
+import WhatsAppCampaign from "../modules/whatsapp/whatsapp-campaign.model";
+import WhatsAppSession from "../modules/whatsapp/whatsapp-session.model";
+import WhatsAppMessage from "../modules/whatsapp/whatsapp-message.model";
+import WhatsAppTemplate from "../modules/whatsapp/whatsapp-template.model";
+import WhatsAppOptIn from "../modules/whatsapp/whatsapp-opt-in.model";
+import WhatsAppDeliveryLog from "../modules/whatsapp/whatsapp-delivery-log.model";
 import { logger } from "../shared";
 
 export const setupAssociations = () => {
   initDebtModels();
+  initWhatsAppModels();
 
   // Center -> Members
   Center.hasMany(Member, { foreignKey: "centerId", as: "members" });
@@ -119,6 +127,126 @@ export const setupAssociations = () => {
   DebtPayment.belongsTo(AccountingTransaction, {
     foreignKey: "accountingTransactionId",
     as: "accountingTransaction",
+  });
+
+  // Center -> WhatsApp Sessions
+  Center.hasMany(WhatsAppSession, {
+    foreignKey: "centerId",
+    as: "whatsappSessions",
+  });
+  WhatsAppSession.belongsTo(Center, {
+    foreignKey: "centerId",
+    as: "center",
+  });
+
+  // Center -> WhatsApp Templates
+  Center.hasMany(WhatsAppTemplate, {
+    foreignKey: "centerId",
+    as: "whatsappTemplates",
+  });
+  WhatsAppTemplate.belongsTo(Center, {
+    foreignKey: "centerId",
+    as: "templateCenter",
+  });
+
+  // Center -> WhatsApp Campaigns
+  Center.hasMany(WhatsAppCampaign, {
+    foreignKey: "centerId",
+    as: "whatsappCampaigns",
+  });
+  WhatsAppCampaign.belongsTo(Center, {
+    foreignKey: "centerId",
+    as: "campaignCenter",
+  });
+
+  // Center -> WhatsApp Messages
+  Center.hasMany(WhatsAppMessage, {
+    foreignKey: "centerId",
+    as: "whatsappMessages",
+  });
+  WhatsAppMessage.belongsTo(Center, {
+    foreignKey: "centerId",
+    as: "messageCenter",
+  });
+
+  // Member -> WhatsApp Messages
+  Member.hasMany(WhatsAppMessage, {
+    foreignKey: "memberId",
+    as: "whatsappMessages",
+  });
+  WhatsAppMessage.belongsTo(Member, {
+    foreignKey: "memberId",
+    as: "member",
+  });
+
+  // Campaign -> WhatsApp Messages
+  WhatsAppCampaign.hasMany(WhatsAppMessage, {
+    foreignKey: "campaignId",
+    as: "messages",
+  });
+  WhatsAppMessage.belongsTo(WhatsAppCampaign, {
+    foreignKey: "campaignId",
+    as: "campaign",
+  });
+
+  // Session -> WhatsApp Messages
+  WhatsAppSession.hasMany(WhatsAppMessage, {
+    foreignKey: "sessionId",
+    as: "messages",
+  });
+  WhatsAppMessage.belongsTo(WhatsAppSession, {
+    foreignKey: "sessionId",
+    as: "session",
+  });
+
+  // Template -> WhatsApp Messages
+  WhatsAppTemplate.hasMany(WhatsAppMessage, {
+    foreignKey: "templateId",
+    as: "messages",
+  });
+  WhatsAppMessage.belongsTo(WhatsAppTemplate, {
+    foreignKey: "templateId",
+    as: "template",
+  });
+
+  // Center -> WhatsApp Opt-ins
+  Center.hasMany(WhatsAppOptIn, {
+    foreignKey: "centerId",
+    as: "whatsappOptIns",
+  });
+  WhatsAppOptIn.belongsTo(Center, {
+    foreignKey: "centerId",
+    as: "optInCenter",
+  });
+
+  // Member -> WhatsApp Opt-ins
+  Member.hasMany(WhatsAppOptIn, {
+    foreignKey: "memberId",
+    as: "whatsappOptIns",
+  });
+  WhatsAppOptIn.belongsTo(Member, {
+    foreignKey: "memberId",
+    as: "member",
+  });
+
+  // WhatsApp Message -> Delivery logs
+  WhatsAppMessage.hasMany(WhatsAppDeliveryLog, {
+    foreignKey: "messageId",
+    as: "deliveryLogs",
+  });
+  WhatsAppDeliveryLog.belongsTo(WhatsAppMessage, {
+    foreignKey: "messageId",
+    as: "message",
+  });
+
+  // WhatsApp Session -> Delivery logs
+  WhatsAppSession.hasMany(WhatsAppDeliveryLog, {
+    foreignKey: "sessionId",
+    as: "deliveryLogs",
+  });
+  WhatsAppDeliveryLog.belongsTo(WhatsAppSession, {
+    foreignKey: "sessionId",
+    as: "session",
   });
 
   logger.info("Database associations setup completed");

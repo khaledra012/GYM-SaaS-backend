@@ -4,6 +4,7 @@ import app from "./app";
 import { setupAssociations } from "./config/associations";
 import { logger } from "./shared";
 import { startSubscriptionAutoExpireJob } from "./modules/subscriptions";
+import { startWhatsAppJobs } from "./modules/whatsapp";
 
 dotenv.config();
 
@@ -28,6 +29,7 @@ const startServer = async () => {
     logger.info("Database models synchronized", { alter: shouldAlter });
 
     startSubscriptionAutoExpireJob();
+    startWhatsAppJobs();
 
     const PORT = process.env.PORT || 3000;
     const server = app.listen(PORT, () => {

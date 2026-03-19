@@ -55,6 +55,14 @@ import {
   downCreateStaffUsersAndShiftStaffRefs,
   upCreateStaffUsersAndShiftStaffRefs,
 } from "./20260317_01_create_staff_users_and_shift_staff_refs";
+import {
+  downCreateWhatsAppTables,
+  upCreateWhatsAppTables,
+} from "./20260318_01_create_whatsapp_tables";
+import {
+  downCreateWhatsAppCampaigns,
+  upCreateWhatsAppCampaigns,
+} from "./20260319_01_create_whatsapp_campaigns";
 
 export const migrations: IMigration[] = [
   {
@@ -140,5 +148,17 @@ export const migrations: IMigration[] = [
     name: "Create staff_users table and add shift staff references",
     up: upCreateStaffUsersAndShiftStaffRefs,
     down: downCreateStaffUsersAndShiftStaffRefs,
+  },
+  {
+    id: "20260318_01_create_whatsapp_tables",
+    name: "Create whatsapp sessions, messages, templates, opt-ins, and logs tables",
+    up: upCreateWhatsAppTables,
+    down: downCreateWhatsAppTables,
+  },
+  {
+    id: "20260319_01_create_whatsapp_campaigns",
+    name: "Create whatsapp campaigns table and link campaign messages",
+    up: upCreateWhatsAppCampaigns,
+    down: downCreateWhatsAppCampaigns,
   },
 ];

@@ -16,6 +16,7 @@ import {
   dateOnlyToUtcStartOfDay,
   getCurrentDateOnlyInTimezone,
   getDateOnlyInTimezone,
+  logger,
   normalizeTimezone,
 } from "../../shared";
 import {
@@ -28,6 +29,7 @@ import {
   IDeductSessionsDTO,
   IRefundSubscriptionDTO,
 } from "./subscription.schema";
+import { whatsAppCommandFacade } from "../whatsapp";
 
 class SubscriptionService {
   private async logEvent(
@@ -408,6 +410,29 @@ class SubscriptionService {
         t,
       );
 
+      if (data.pricePaidCents > 0) {
+        t.afterCommit(() => {
+          void whatsAppCommandFacade
+            .queuePaymentReceipt({
+              centerId,
+              memberId: subscription.memberId,
+              amountCents: data.pricePaidCents,
+              remainingBalanceCents: Math.max(
+                0,
+                expectedTotalPriceCents - data.pricePaidCents,
+              ),
+              dedupeKey: `subscription-payment:create:${subscription.id}`,
+            })
+            .catch((error) => {
+              logger.error("فشل تجهيز إيصال سداد الاشتراك الجديد عبر واتساب", {
+                centerId,
+                subscriptionId: subscription.id,
+                error: String(error),
+              });
+            });
+        });
+      }
+
       return subscription;
     });
   }
@@ -629,6 +654,29 @@ class SubscriptionService {
         t,
       );
 
+      if (data.pricePaidCents > 0) {
+        t.afterCommit(() => {
+          void whatsAppCommandFacade
+            .queuePaymentReceipt({
+              centerId,
+              memberId: subscription.memberId,
+              amountCents: data.pricePaidCents,
+              remainingBalanceCents: Math.max(
+                0,
+                expectedTotalPriceCents - data.pricePaidCents,
+              ),
+              dedupeKey: `subscription-payment:renew-time:${subscription.id}:${newEndDate.toISOString()}`,
+            })
+            .catch((error) => {
+              logger.error("فشل تجهيز إيصال تجديد الاشتراك الزمني عبر واتساب", {
+                centerId,
+                subscriptionId: subscription.id,
+                error: String(error),
+              });
+            });
+        });
+      }
+
       return subscription;
     });
   }
@@ -706,6 +754,29 @@ class SubscriptionService {
         },
         t,
       );
+
+      if (data.pricePaidCents > 0) {
+        t.afterCommit(() => {
+          void whatsAppCommandFacade
+            .queuePaymentReceipt({
+              centerId,
+              memberId: subscription.memberId,
+              amountCents: data.pricePaidCents,
+              remainingBalanceCents: Math.max(
+                0,
+                expectedTotalPriceCents - data.pricePaidCents,
+              ),
+              dedupeKey: `subscription-payment:renew-sessions:${subscription.id}:${subscription.totalSessions}`,
+            })
+            .catch((error) => {
+              logger.error("فشل تجهيز إيصال تجديد اشتراك الحصص عبر واتساب", {
+                centerId,
+                subscriptionId: subscription.id,
+                error: String(error),
+              });
+            });
+        });
+      }
 
       return subscription;
     });
@@ -969,6 +1040,29 @@ class SubscriptionService {
         },
         t,
       );
+
+      if (data.pricePaidCents > 0) {
+        t.afterCommit(() => {
+          void whatsAppCommandFacade
+            .queuePaymentReceipt({
+              centerId,
+              memberId: subscription.memberId,
+              amountCents: data.pricePaidCents,
+              remainingBalanceCents: Math.max(
+                0,
+                expectedTotalPriceCents - data.pricePaidCents,
+              ),
+              dedupeKey: `subscription-payment:renew-expired:${subscription.id}:${startDateOnly}`,
+            })
+            .catch((error) => {
+              logger.error("فشل تجهيز إيصال تجديد الاشتراك المنتهي عبر واتساب", {
+                centerId,
+                subscriptionId: subscription.id,
+                error: String(error),
+              });
+            });
+        });
+      }
 
       return subscription;
     });
