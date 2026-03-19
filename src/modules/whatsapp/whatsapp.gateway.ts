@@ -48,6 +48,7 @@ const resolveAuthRootDirectory = (): string => {
 
 export class WhatsAppGateway {
   private runtimes = new Map<number, IWhatsAppGatewayRuntime>();
+  private manualDisconnects = new Set<number>();
   private libraries: ILoadedLibraries | null = null;
   private readonly authRootDirectory = resolveAuthRootDirectory();
 
@@ -136,6 +137,15 @@ export class WhatsAppGateway {
     }
   }
 
+  private async clearSessionDirectory(centerId: number) {
+    const sessionDirectory = this.getSessionDirectory(centerId);
+    await fs.rm(sessionDirectory, { recursive: true, force: true });
+    logger.info("تمت إعادة ضبط ملفات جلسة واتساب", {
+      centerId,
+      sessionDirectory,
+    });
+  }
+
   private async handleConnectionUpdate(
     centerId: number,
     update: any,
@@ -195,12 +205,14 @@ export class WhatsAppGateway {
 
       const isLoggedOut =
         disconnectStatusCode === Number(baileys?.DisconnectReason?.loggedOut);
+      const isManualDisconnect = this.manualDisconnects.has(centerId);
 
       logger.warn("تم إغلاق جلسة واتساب", {
         centerId,
         disconnectStatusCode,
         disconnectMessage: disconnectMessage || null,
         isLoggedOut,
+        isManualDisconnect,
       });
 
       await this.onSessionUpdate(centerId, {
@@ -213,6 +225,22 @@ export class WhatsAppGateway {
       if (isLoggedOut) {
         this.clearReconnectHandle(centerId);
         this.runtimes.delete(centerId);
+
+        if (isManualDisconnect) {
+          this.manualDisconnects.delete(centerId);
+          return;
+        }
+
+        try {
+          await this.clearSessionDirectory(centerId);
+          await this.connect(centerId);
+        } catch (error) {
+          logger.error("تعذر تجهيز جلسة واتساب جديدة بعد تسجيل الخروج", {
+            centerId,
+            error: String(error),
+          });
+        }
+
         return;
       }
 
@@ -248,8 +276,8 @@ export class WhatsAppGateway {
       void saveCreds();
     });
 
-    socket.ev.on("connection.update", (update: any) => {
-      void this.handleConnectionUpdate(centerId, update);
+    socket.ev.on("connection.update", (connectionUpdate: any) => {
+      void this.handleConnectionUpdate(centerId, connectionUpdate);
     });
 
     return {
@@ -276,6 +304,7 @@ export class WhatsAppGateway {
     const runtime = this.runtimes.get(centerId);
     if (runtime) {
       this.clearReconnectHandle(centerId);
+      this.manualDisconnects.add(centerId);
 
       try {
         await runtime.socket.logout?.();
@@ -289,6 +318,8 @@ export class WhatsAppGateway {
 
       this.runtimes.delete(centerId);
     }
+
+    this.manualDisconnects.delete(centerId);
 
     await this.onSessionUpdate(centerId, {
       status: "disconnected",
