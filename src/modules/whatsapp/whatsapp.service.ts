@@ -95,6 +95,8 @@ const GLOBAL_SCOPE_KEY = "global";
 const MAX_SEND_ATTEMPTS = 3;
 const GLOBAL_HEALTH_WINDOW_MS = 15 * 60 * 1000;
 const MESSAGE_DISPATCH_BATCH_SIZE = 5;
+const CAMPAIGN_MIN_DISPATCH_GAP_SECONDS = 60;
+const CAMPAIGN_MAX_DISPATCH_GAP_SECONDS = 120;
 const ACTIVE_SESSION_STATUSES = ["connecting", "qr_ready", "connected", "degraded"];
 const SENDABLE_SESSION_STATUSES = new Set(["connected", "degraded"]);
 const FAILURE_STATUSES: WhatsAppMessageStatus[] = [
@@ -1078,7 +1080,13 @@ class WhatsAppService {
     }
 
     const campaignName = this.buildCampaignName(input.name, input.audienceType);
-    const scheduledTimes = buildSequentialDispatchTimes(audience.recipientCount);
+    const scheduledTimes = buildSequentialDispatchTimes(
+      audience.recipientCount,
+      new Date(),
+      Math.random,
+      CAMPAIGN_MIN_DISPATCH_GAP_SECONDS,
+      CAMPAIGN_MAX_DISPATCH_GAP_SECONDS,
+    );
 
     return sequelize.transaction(async (transaction) => {
       const campaign = await WhatsAppCampaign.create(
@@ -1259,7 +1267,13 @@ class WhatsAppService {
       ],
     });
 
-    const scheduledTimes = buildSequentialDispatchTimes(deferredMessages.length);
+    const scheduledTimes = buildSequentialDispatchTimes(
+      deferredMessages.length,
+      new Date(),
+      Math.random,
+      CAMPAIGN_MIN_DISPATCH_GAP_SECONDS,
+      CAMPAIGN_MAX_DISPATCH_GAP_SECONDS,
+    );
 
     for (const [index, message] of deferredMessages.entries()) {
       message.status = "pending";
