@@ -130,6 +130,31 @@ class WhatsAppService {
     async (centerId, update) => this.applyGatewaySessionUpdate(centerId, update),
   );
 
+  private normalizeMetadata(
+    metadata: unknown,
+  ): Record<string, unknown> | null {
+    if (!metadata) {
+      return null;
+    }
+
+    if (typeof metadata === "string") {
+      try {
+        const parsed = JSON.parse(metadata) as unknown;
+        return parsed && typeof parsed === "object"
+          ? (parsed as Record<string, unknown>)
+          : null;
+      } catch {
+        return null;
+      }
+    }
+
+    if (typeof metadata === "object") {
+      return metadata as Record<string, unknown>;
+    }
+
+    return null;
+  }
+
   private async ensureModuleState(): Promise<WhatsAppModuleState> {
     const [moduleState] = await WhatsAppModuleState.findOrCreate({
       where: { scopeKey: GLOBAL_SCOPE_KEY },
@@ -230,6 +255,7 @@ class WhatsAppService {
 
   private mapMessage(message: WhatsAppMessage, displayNumber?: number) {
     const data = message.toJSON() as any;
+    const metadata = this.normalizeMetadata(data.metadata);
 
     return {
       id: data.id,
@@ -250,7 +276,7 @@ class WhatsAppService {
       nextAttemptAt: data.nextAttemptAt,
       lastAttemptAt: data.lastAttemptAt,
       sentAt: data.sentAt,
-      metadata: data.metadata,
+      metadata,
       member: data.member
         ? {
             id: data.member.id,
@@ -709,8 +735,9 @@ class WhatsAppService {
     message.failureReason = null;
     message.nextAttemptAt = null;
     message.sentAt = new Date();
+    const currentMetadata = this.normalizeMetadata(message.metadata);
     message.metadata = {
-      ...(message.metadata ?? {}),
+      ...(currentMetadata ?? {}),
       providerMessageId,
     };
     await message.save();
@@ -1803,7 +1830,15 @@ class WhatsAppService {
       }
     }
 
-    const attachment = (message.metadata as any)?.attachment;
+    const normalizedMetadata = this.normalizeMetadata(message.metadata);
+    const attachment = normalizedMetadata?.attachment as
+      | {
+          type?: string;
+          filePath?: string;
+          fileName?: string;
+          mimetype?: string;
+        }
+      | undefined;
 
     try {
       const result =
