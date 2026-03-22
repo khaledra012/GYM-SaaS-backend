@@ -32,6 +32,14 @@ interface IQueueDebtFollowUpInput {
   dedupeKey: string;
 }
 
+interface IQueueAiPlanPdfInput {
+  centerId: number;
+  memberId: number;
+  filePath: string;
+  fileName: string;
+  dedupeKey: string;
+}
+
 class WhatsAppCommandFacade {
   private centsToMoneyString(amountCents: number): string {
     return (amountCents / 100).toFixed(2);
@@ -147,6 +155,36 @@ class WhatsAppCommandFacade {
       },
       metadata: {
         source: "debt_follow_up",
+      },
+    });
+  }
+
+  public async queueAiPlanPdfMessage(input: IQueueAiPlanPdfInput) {
+    const [center, member] = await Promise.all([
+      authReadFacade.getCenterForAccess(input.centerId),
+      memberReadFacade.findContactByIdInCenter(input.memberId, input.centerId),
+    ]);
+
+    if (!center || !member) {
+      return { queued: false, reason: "تعذر تجهيز بيانات خطة العضو للإرسال", message: null };
+    }
+
+    return whatsAppService.queueDocumentMessage({
+      centerId: input.centerId,
+      eventType: "ai_plan_pdf",
+      memberId: member.id,
+      phone: member.phone,
+      filePath: input.filePath,
+      fileName: input.fileName,
+      mimetype: "application/pdf",
+      requireOptIn: false,
+      dedupeKey: input.dedupeKey,
+      variables: {
+        name: member.name,
+        gym_name: center.name,
+      },
+      metadata: {
+        source: "ai_plan_approved",
       },
     });
   }

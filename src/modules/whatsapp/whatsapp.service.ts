@@ -55,6 +55,22 @@ interface IQueueTemplateMessageInput {
   nextAttemptAt?: Date | null;
 }
 
+interface IQueueDocumentMessageInput {
+  centerId: number;
+  eventType: WhatsAppTemplateEventType;
+  phone: string;
+  filePath: string;
+  fileName: string;
+  mimetype: string;
+  memberId?: number | null;
+  dedupeKey?: string | null;
+  templateBody?: string;
+  requireOptIn?: boolean;
+  variables: Record<string, string | number | null | undefined>;
+  metadata?: Record<string, unknown> | null;
+  nextAttemptAt?: Date | null;
+}
+
 interface IQueueTemplateMessageResult {
   queued: boolean;
   reason?: string;
@@ -1414,6 +1430,94 @@ class WhatsAppService {
     };
   }
 
+  public async queueDocumentMessage(
+    input: IQueueDocumentMessageInput,
+  ): Promise<IQueueTemplateMessageResult> {
+    if (
+      input.requireOptIn !== false &&
+      input.memberId &&
+      !(await this.isMemberOptedIn(input.centerId, input.memberId))
+    ) {
+      return {
+        queued: false,
+        reason: "العضو لم يوافق بعد على استقبال رسائل واتساب",
+        message: null,
+      };
+    }
+
+    const normalizedPhone = normalizeWhatsAppPhone(input.phone);
+    if (!normalizedPhone) {
+      return {
+        queued: false,
+        reason: "رقم الهاتف غير صالح للإرسال عبر واتساب",
+        message: null,
+      };
+    }
+
+    if (input.dedupeKey) {
+      const existing = await WhatsAppMessage.findOne({
+        where: {
+          centerId: input.centerId,
+          dedupeKey: input.dedupeKey,
+        },
+      });
+
+      if (existing) {
+        return {
+          queued: true,
+          alreadyQueued: true,
+          message: this.mapMessage(existing),
+        };
+      }
+    }
+
+    const resolvedTemplate = await this.resolveTemplate(
+      input.centerId,
+      input.eventType,
+      input.templateBody,
+    );
+    const renderedBody = renderAndSpinWhatsAppTemplate(
+      resolvedTemplate.body,
+      input.variables,
+    ).trim();
+
+    const message = await WhatsAppMessage.create({
+      centerId: input.centerId,
+      sessionId: null,
+      memberId: input.memberId ?? null,
+      campaignId: null,
+      eventType: input.eventType,
+      templateId: resolvedTemplate.templateId,
+      dedupeKey: input.dedupeKey ?? null,
+      phone: normalizedPhone,
+      renderedBody,
+      status: "pending",
+      nextAttemptAt: input.nextAttemptAt ?? new Date(),
+      metadata: {
+        ...(input.metadata ?? {}),
+        attachment: {
+          type: "document",
+          filePath: input.filePath,
+          fileName: input.fileName,
+          mimetype: input.mimetype,
+        },
+      },
+    });
+
+    await this.createDeliveryLog(
+      input.centerId,
+      message.id,
+      null,
+      "queued",
+      "تمت إضافة الملف إلى طابور الإرسال",
+    );
+
+    return {
+      queued: true,
+      message: this.mapMessage(message),
+    };
+  }
+
   public async sendTestMessage(
     centerId: number,
     phone: string,
@@ -1699,12 +1803,18 @@ class WhatsAppService {
       }
     }
 
+    const attachment = (message.metadata as any)?.attachment;
+
     try {
-      const result = await this.gateway.sendText(
-        message.centerId,
-        message.phone,
-        message.renderedBody,
-      );
+      const result =
+        attachment?.type === "document"
+          ? await this.gateway.sendDocument(message.centerId, message.phone, {
+              caption: message.renderedBody,
+              filePath: String(attachment.filePath ?? ""),
+              fileName: String(attachment.fileName ?? "plan.pdf"),
+              mimetype: String(attachment.mimetype ?? "application/pdf"),
+            })
+          : await this.gateway.sendText(message.centerId, message.phone, message.renderedBody);
 
       await this.markMessageSent(message, session.id, result.messageId);
       if (message.campaignId) {

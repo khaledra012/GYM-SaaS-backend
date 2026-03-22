@@ -20,12 +20,14 @@ router.post(
 
 router.post(
   "/forgot-password",
+  RateLimitMiddleware.authLimiter,
   validate(AuthValidation.forgotPassword),
   authController.forgotPassword,
 );
 
 router.patch(
   "/reset-password/:token",
+  RateLimitMiddleware.authLimiter,
   validate(AuthValidation.resetPassword),
   authController.resetPassword,
 );

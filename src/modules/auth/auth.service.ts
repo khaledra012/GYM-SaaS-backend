@@ -1,4 +1,4 @@
-import Center from "./auth.model";
+﻿import Center from "./auth.model";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
@@ -35,7 +35,7 @@ class AuthService {
     setImmediate(() => {
       void task().catch((error: unknown) => {
         const meta = (error || {}) as IErrorMeta;
-        logger.error("فشل تنفيذ مهمة إرسال الإيميل في الخلفية", {
+        logger.error("ظپط´ظ„ طھظ†ظپظٹط° ظ…ظ‡ظ…ط© ط¥ط±ط³ط§ظ„ ط§ظ„ط¥ظٹظ…ظٹظ„ ظپظٹ ط§ظ„ط®ظ„ظپظٹط©", {
           error: String(error),
           name: typeof meta.name === "string" ? meta.name : undefined,
           code: typeof meta.code === "string" ? meta.code : undefined,
@@ -58,7 +58,7 @@ class AuthService {
         await new Email(input.recipient, input.resetURL).sendPasswordReset();
       } catch (error: unknown) {
         const meta = (error || {}) as IErrorMeta;
-        logger.error("فشل إرسال إيميل استعادة كلمة المرور", {
+        logger.error("ظپط´ظ„ ط¥ط±ط³ط§ظ„ ط¥ظٹظ…ظٹظ„ ط§ط³طھط¹ط§ط¯ط© ظƒظ„ظ…ط© ط§ظ„ظ…ط±ظˆط±", {
           centerId: input.centerId,
           error: String(error),
           name: typeof meta.name === "string" ? meta.name : undefined,
@@ -78,7 +78,7 @@ class AuthService {
             },
           );
         } catch (clearError) {
-          logger.error("فشل إلغاء توكن استعادة كلمة المرور بعد تعذر الإرسال", {
+          logger.error("ظپط´ظ„ ط¥ظ„ط؛ط§ط، طھظˆظƒظ† ط§ط³طھط¹ط§ط¯ط© ظƒظ„ظ…ط© ط§ظ„ظ…ط±ظˆط± ط¨ط¹ط¯ طھط¹ط°ط± ط§ظ„ط¥ط±ط³ط§ظ„", {
             centerId: input.centerId,
             error: String(clearError),
           });
@@ -111,14 +111,14 @@ class AuthService {
   async login(email: string, password: string) {
     const center = await Center.findOne({ where: { email } });
     if (!center || !(await bcrypt.compare(password, center.password))) {
-      throw new AppError("بيانات الدخول غير صحيحة", 401);
+      throw new AppError("ط¨ظٹط§ظ†ط§طھ ط§ظ„ط¯ط®ظˆظ„ ط؛ظٹط± طµط­ظٹط­ط©", 401);
     }
 
     await ensureCenterBillingStatus(center);
 
     if (center.billingStatus === "unsubscribed") {
       throw new AppError(
-        "انتهت فترة التجربة. يرجى التواصل مع الإدارة لتفعيل الاشتراك.",
+        "ط§ظ†طھظ‡طھ ظپطھط±ط© ط§ظ„طھط¬ط±ط¨ط©. ظٹط±ط¬ظ‰ ط§ظ„طھظˆط§طµظ„ ظ…ط¹ ط§ظ„ط¥ط¯ط§ط±ط© ظ„طھظپط¹ظٹظ„ ط§ظ„ط§ط´طھط±ط§ظƒ.",
         403,
       );
     }
@@ -161,17 +161,19 @@ class AuthService {
     };
   }
 
-  async forgotPassword(email: string): Promise<IQueuedPasswordResetEmailInput> {
+  async forgotPassword(email: string): Promise<IQueuedPasswordResetEmailInput | null> {
     const center = await Center.findOne({ where: { email } });
     const frontendUrl = process.env.FRONTEND_URL;
-    if (!center) throw new AppError("لا يوجد مستخدم بهذا البريد", 404);
-
     const resetToken = crypto.randomBytes(32).toString("hex");
-    center.passwordResetToken = crypto
-      .createHash("sha256")
-      .update(resetToken)
-      .digest("hex");
-    center.passwordResetExpires = new Date(Date.now() + 10 * 60 * 1000);
+    const hashedResetToken = crypto.createHash("sha256").update(resetToken).digest("hex");
+    const resetTokenExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+    if (!center) {
+      return null;
+    }
+
+    center.passwordResetToken = hashedResetToken;
+    center.passwordResetExpires = resetTokenExpiresAt;
 
     await center.save();
     const resetURL = `${frontendUrl}/reset-password/${resetToken}`;
@@ -195,7 +197,7 @@ class AuthService {
       },
     });
 
-    if (!center) throw new AppError("التوكن غير صالح أو انتهى", 400);
+    if (!center) throw new AppError("ط§ظ„طھظˆظƒظ† ط؛ظٹط± طµط§ظ„ط­ ط£ظˆ ط§ظ†طھظ‡ظ‰", 400);
 
     center.password = await bcrypt.hash(newPass, 10);
     center.passwordResetToken = null;
@@ -205,3 +207,4 @@ class AuthService {
 }
 
 export const authService = new AuthService();
+

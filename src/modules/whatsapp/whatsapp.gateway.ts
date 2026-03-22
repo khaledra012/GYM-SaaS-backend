@@ -370,4 +370,63 @@ export class WhatsAppGateway {
       messageId: response?.key?.id ?? null,
     };
   }
+
+  public async sendDocument(
+    centerId: number,
+    phone: string,
+    input: {
+      caption: string;
+      filePath: string;
+      fileName: string;
+      mimetype: string;
+    },
+  ): Promise<{ messageId: string | null }> {
+    let runtime = this.runtimes.get(centerId);
+    if (!runtime) {
+      await this.connect(centerId);
+      runtime = this.runtimes.get(centerId);
+    }
+
+    if (!runtime?.socket) {
+      const error = new Error("جلسة الواتساب غير متاحة حاليًا");
+      (error as any).code = "session_unavailable";
+      throw error;
+    }
+
+    if (!runtime.socket.user) {
+      const error = new Error("الجلسة غير متصلة حاليًا");
+      (error as any).code = "session_unavailable";
+      throw error;
+    }
+
+    const jid = toWhatsAppJid(phone);
+    if (!jid) {
+      const error = new Error("رقم الهاتف غير صالح للإرسال");
+      (error as any).code = "invalid_phone";
+      throw error;
+    }
+
+    let fileBuffer: Buffer;
+    try {
+      fileBuffer = await fs.readFile(input.filePath);
+    } catch {
+      const error = new Error("ملف الخطة المطلوب إرساله غير موجود");
+      (error as any).code = "attachment_missing";
+      throw error;
+    }
+
+    await runtime.socket.sendPresenceUpdate("available", jid);
+    await delay(1_000 + Math.floor(Math.random() * 1_500));
+
+    const response = await runtime.socket.sendMessage(jid, {
+      document: fileBuffer,
+      caption: input.caption,
+      fileName: input.fileName,
+      mimetype: input.mimetype,
+    });
+
+    return {
+      messageId: response?.key?.id ?? null,
+    };
+  }
 }

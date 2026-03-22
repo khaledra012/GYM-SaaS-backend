@@ -17,6 +17,9 @@ import WhatsAppMessage from "../modules/whatsapp/whatsapp-message.model";
 import WhatsAppTemplate from "../modules/whatsapp/whatsapp-template.model";
 import WhatsAppOptIn from "../modules/whatsapp/whatsapp-opt-in.model";
 import WhatsAppDeliveryLog from "../modules/whatsapp/whatsapp-delivery-log.model";
+import AiPlan from "../modules/ai-plans/ai-plan.model";
+import AiPlanVersion from "../modules/ai-plans/ai-plan-version.model";
+import AiPlanDeliveryLog from "../modules/ai-plans/ai-plan-delivery-log.model";
 import { logger } from "../shared";
 
 export const setupAssociations = () => {
@@ -247,6 +250,56 @@ export const setupAssociations = () => {
   WhatsAppDeliveryLog.belongsTo(WhatsAppSession, {
     foreignKey: "sessionId",
     as: "session",
+  });
+
+  // Center -> AI Plans
+  Center.hasMany(AiPlan, {
+    foreignKey: "centerId",
+    as: "aiPlans",
+  });
+  AiPlan.belongsTo(Center, {
+    foreignKey: "centerId",
+    as: "planCenter",
+  });
+
+  // Member -> AI Plans
+  Member.hasMany(AiPlan, {
+    foreignKey: "memberId",
+    as: "aiPlans",
+  });
+  AiPlan.belongsTo(Member, {
+    foreignKey: "memberId",
+    as: "member",
+  });
+
+  // AI Plan -> Versions
+  AiPlan.hasMany(AiPlanVersion, {
+    foreignKey: "planId",
+    as: "versions",
+  });
+  AiPlanVersion.belongsTo(AiPlan, {
+    foreignKey: "planId",
+    as: "plan",
+  });
+
+  // AI Plan -> Delivery logs
+  AiPlan.hasMany(AiPlanDeliveryLog, {
+    foreignKey: "planId",
+    as: "deliveryLogs",
+  });
+  AiPlanDeliveryLog.belongsTo(AiPlan, {
+    foreignKey: "planId",
+    as: "plan",
+  });
+
+  // WhatsApp Message -> AI plan delivery logs
+  WhatsAppMessage.hasMany(AiPlanDeliveryLog, {
+    foreignKey: "whatsappMessageId",
+    as: "aiPlanDeliveryLogs",
+  });
+  AiPlanDeliveryLog.belongsTo(WhatsAppMessage, {
+    foreignKey: "whatsappMessageId",
+    as: "whatsappMessage",
   });
 
   logger.info("Database associations setup completed");

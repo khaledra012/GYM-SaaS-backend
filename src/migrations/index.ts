@@ -63,6 +63,10 @@ import {
   downCreateWhatsAppCampaigns,
   upCreateWhatsAppCampaigns,
 } from "./20260319_01_create_whatsapp_campaigns";
+import {
+  downCreateAiPlanTables,
+  upCreateAiPlanTables,
+} from "./20260322_01_create_ai_plan_tables";
 
 export const migrations: IMigration[] = [
   {
@@ -160,5 +164,11 @@ export const migrations: IMigration[] = [
     name: "Create whatsapp campaigns table and link campaign messages",
     up: upCreateWhatsAppCampaigns,
     down: downCreateWhatsAppCampaigns,
+  },
+  {
+    id: "20260322_01_create_ai_plan_tables",
+    name: "Create AI plan tables and extend WhatsApp event types",
+    up: upCreateAiPlanTables,
+    down: downCreateAiPlanTables,
   },
 ];

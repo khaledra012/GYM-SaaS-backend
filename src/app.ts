@@ -15,8 +15,12 @@ import { registerDebtModule } from "./modules/debts";
 import { registerStaffModule } from "./modules/staff";
 import { registerPlatformAdminModule } from "./modules/platform-admin";
 import { registerWhatsAppModule } from "./modules/whatsapp";
+import { registerAiPlanModule } from "./modules/ai-plans";
 
 const app: Application = express();
+const trustProxyHops = Number.parseInt(process.env.TRUST_PROXY_HOPS ?? "1", 10);
+
+app.set("trust proxy", Number.isNaN(trustProxyHops) ? 1 : trustProxyHops);
 
 // Security
 app.use(helmet());
@@ -38,7 +42,7 @@ app.use(
 app.use(express.json());
 
 // Global rate limit
-// app.use("/api", RateLimitMiddleware.globalLimiter);
+app.use("/api", RateLimitMiddleware.globalLimiter);
 
 // Register modules - each module self-registers its routes
 registerAuthModule(app);
@@ -50,6 +54,7 @@ registerCheckinModule(app);
 registerAccountingModule(app);
 registerDebtModule(app);
 registerWhatsAppModule(app);
+registerAiPlanModule(app);
 registerPlatformAdminModule(app);
 
 // 404 catch-all

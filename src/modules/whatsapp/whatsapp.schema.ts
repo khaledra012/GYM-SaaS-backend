@@ -44,6 +44,7 @@ const messageEventTypeSchema = z.enum(
     "debt_follow_up",
     "manual_test",
     "campaign_broadcast",
+    "ai_plan_pdf",
   ],
   {
     message: "نوع الرسالة غير صالح",

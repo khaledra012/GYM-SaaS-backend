@@ -19,6 +19,7 @@ const FATAL_FAILURE_CODES = new Set([
   "invalid_phone",
   "recipient_not_registered",
   "invalid_payload",
+  "attachment_missing",
 ]);
 
 export const renderWhatsAppTemplate = (
@@ -201,7 +202,9 @@ export const classifyWhatsAppFailure = (
     message.includes("does not have whatsapp") ||
     message.includes("not on whatsapp") ||
     message.includes("invalid jid") ||
-    message.includes("invalid phone")
+    message.includes("invalid phone") ||
+    message.includes("attachment missing") ||
+    message.includes("file not found")
   ) {
     return buildFailure(
       "fatal",

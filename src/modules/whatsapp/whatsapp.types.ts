@@ -37,7 +37,8 @@ export type WhatsAppTemplateEventType =
   | "payment_receipt"
   | "debt_follow_up"
   | "manual_test"
-  | "campaign_broadcast";
+  | "campaign_broadcast"
+  | "ai_plan_pdf";
 
 export type WhatsAppDeliveryStatus =
   | "queued"

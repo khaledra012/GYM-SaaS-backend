@@ -42,9 +42,11 @@ export const forgotPassword = catchAsync(
     const { email } = (req as any).validated.body as IForgotPasswordDTO;
 
     const resetEmailTask = await authService.forgotPassword(email);
-    res.once("finish", () => {
-      authService.queuePasswordResetEmail(resetEmailTask);
-    });
+    if (resetEmailTask) {
+      res.once("finish", () => {
+        authService.queuePasswordResetEmail(resetEmailTask);
+      });
+    }
 
     return res.status(200).json({
       status: "\u0646\u062c\u0627\u062d",
