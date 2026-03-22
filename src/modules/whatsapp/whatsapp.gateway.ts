@@ -388,28 +388,36 @@ export class WhatsAppGateway {
     }
 
     if (!runtime?.socket) {
-      const error = new Error("Ø¬Ù„Ø³Ø© Ø§Ù„ÙˆØ§ØªØ³Ø§Ø¨ ØºÙŠØ± Ù…ØªØ§Ø­Ø© Ø­Ø§Ù„ÙŠÙ‹Ø§");
+      const error = new Error("ÌáÓÉ ÇáæÇÊÓÇÈ ÛíÑ ãÊÇÍÉ ÍÇáíÇğ");
       (error as any).code = "session_unavailable";
       throw error;
     }
 
     if (!runtime.socket.user) {
-      const error = new Error("Ø§Ù„Ø¬Ù„Ø³Ø© ØºÙŠØ± Ù…ØªØµÙ„Ø© Ø­Ø§Ù„ÙŠÙ‹Ø§");
+      const error = new Error("ÇáÌáÓÉ ÛíÑ ãÊÕáÉ ÍÇáíÇğ");
       (error as any).code = "session_unavailable";
       throw error;
     }
 
     const jid = toWhatsAppJid(phone);
     if (!jid) {
-      const error = new Error("Ø±Ù‚Ù… Ø§Ù„Ù‡Ø§ØªÙ ØºÙŠØ± ØµØ§Ù„Ø­ Ù„Ù„Ø¥Ø±Ø³Ø§Ù„");
+      const error = new Error("ÑŞã ÇáåÇÊİ ÛíÑ ÕÇáÍ ááÅÑÓÇá");
       (error as any).code = "invalid_phone";
       throw error;
     }
 
+    let fileBuffer: Buffer;
+
     try {
-      await fs.access(input.filePath);
+      fileBuffer = await fs.readFile(input.filePath);
     } catch {
-      const error = new Error("Ù…Ù„Ù Ø§Ù„Ø®Ø·Ø© Ø§Ù„Ù…Ø·Ù„ÙˆØ¨ Ø¥Ø±Ø³Ø§Ù„Ù‡ ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯");
+      const error = new Error("ãáİ ÇáÎØÉ ÇáãØáæÈ ÅÑÓÇáå ÛíÑ ãæÌæÏ");
+      (error as any).code = "attachment_missing";
+      throw error;
+    }
+
+    if (!fileBuffer.length) {
+      const error = new Error("ãáİ ÇáÎØÉ İÇÑÛ æáÇ íãßä ÅÑÓÇáå");
       (error as any).code = "attachment_missing";
       throw error;
     }
@@ -418,16 +426,34 @@ export class WhatsAppGateway {
     await delay(1_000 + Math.floor(Math.random() * 1_500));
 
     const response = await runtime.socket.sendMessage(jid, {
-      document: {
-        url: input.filePath,
-      },
+      document: fileBuffer,
       caption: input.caption,
       fileName: input.fileName,
       mimetype: input.mimetype,
     });
+
+    const responseMessage = response?.message;
+    const hasDocumentPayload = Boolean(
+      responseMessage?.documentMessage ||
+        responseMessage?.documentWithCaptionMessage,
+    );
+
+    if (!hasDocumentPayload) {
+      logger.error("áã íÑÌÚ Baileys ÊÃßíÏÇğ áÅÑÓÇá Çáãáİ ßãÓÊäÏ", {
+        centerId,
+        fileName: input.fileName,
+        filePath: input.filePath,
+        responseKeys: responseMessage ? Object.keys(responseMessage) : [],
+      });
+
+      const error = new Error("ÊÚĞÑ ÅÑÓÇá ãáİ ÇáÎØÉ ßãÓÊäÏ ÚÈÑ æÇÊÓÇÈ");
+      (error as any).code = "document_not_sent";
+      throw error;
+    }
 
     return {
       messageId: response?.key?.id ?? null,
     };
   }
 }
+

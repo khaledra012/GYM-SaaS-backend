@@ -1841,13 +1841,36 @@ class WhatsAppService {
       | undefined;
 
     try {
+      const requiresDocument =
+        message.eventType === "ai_plan_pdf" || attachment?.type === "document";
+      const documentAttachment = requiresDocument
+        ? (attachment as {
+            type?: string;
+            filePath?: string;
+            fileName?: string;
+            mimetype?: string;
+          })
+        : null;
+
+      if (requiresDocument && attachment?.type !== "document") {
+        const error = new Error("بيانات ملف واتساب غير مكتملة لهذه الرسالة");
+        (error as any).code = "attachment_missing";
+        throw error;
+      }
+
+      if (requiresDocument && !String(attachment?.filePath ?? "").trim()) {
+        const error = new Error("مسار الملف المطلوب إرساله عبر واتساب غير موجود");
+        (error as any).code = "attachment_missing";
+        throw error;
+      }
+
       const result =
-        attachment?.type === "document"
+        requiresDocument
           ? await this.gateway.sendDocument(message.centerId, message.phone, {
               caption: message.renderedBody,
-              filePath: String(attachment.filePath ?? ""),
-              fileName: String(attachment.fileName ?? "plan.pdf"),
-              mimetype: String(attachment.mimetype ?? "application/pdf"),
+              filePath: String(documentAttachment?.filePath ?? ""),
+              fileName: String(documentAttachment?.fileName ?? "plan.pdf"),
+              mimetype: String(documentAttachment?.mimetype ?? "application/pdf"),
             })
           : await this.gateway.sendText(message.centerId, message.phone, message.renderedBody);
 

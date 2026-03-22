@@ -388,7 +388,7 @@ class AiPlanService {
     }
 
     const pdfPath = await this.ensurePdfPath(plan, center.name, member.name, member.code);
-    const dedupeKey = `ai-plan-pdf:${plan.id}:${plan.sentAt?.toISOString() ?? plan.approvedAt?.toISOString() ?? plan.updatedAt.toISOString()}`;
+    const dedupeKey = `ai-plan-pdf:${plan.id}:${Date.now()}`;
     const result = await whatsAppCommandFacade.queueAiPlanPdfMessage({
       centerId,
       memberId: member.id,
