@@ -406,9 +406,8 @@ export class WhatsAppGateway {
       throw error;
     }
 
-    let fileBuffer: Buffer;
     try {
-      fileBuffer = await fs.readFile(input.filePath);
+      await fs.access(input.filePath);
     } catch {
       const error = new Error("ملف الخطة المطلوب إرساله غير موجود");
       (error as any).code = "attachment_missing";
@@ -419,7 +418,9 @@ export class WhatsAppGateway {
     await delay(1_000 + Math.floor(Math.random() * 1_500));
 
     const response = await runtime.socket.sendMessage(jid, {
-      document: fileBuffer,
+      document: {
+        url: input.filePath,
+      },
       caption: input.caption,
       fileName: input.fileName,
       mimetype: input.mimetype,

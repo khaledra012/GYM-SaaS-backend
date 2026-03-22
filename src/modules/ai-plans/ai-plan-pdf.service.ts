@@ -27,7 +27,8 @@ const FONT_SIZE_TITLE = 18;
 const FONT_SIZE_SECTION = 14;
 
 export class AiPlanPdfService {
-  private cachedFontBytes: Uint8Array | null = null;
+  private cachedArabicFontBytes: Uint8Array | null = null;
+  private cachedLatinFontBytes: Uint8Array | null = null;
 
   private getStorageRoot(): string {
     const configured = String(process.env.AI_PLAN_STORAGE_DIR ?? "").trim();
@@ -38,9 +39,9 @@ export class AiPlanPdfService {
     return path.join(process.cwd(), "storage", "ai-plans");
   }
 
-  private async getFontBytes(): Promise<Uint8Array> {
-    if (this.cachedFontBytes) {
-      return this.cachedFontBytes;
+  private async getArabicFontBytes(): Promise<Uint8Array> {
+    if (this.cachedArabicFontBytes) {
+      return this.cachedArabicFontBytes;
     }
 
     const fontPath = path.join(
@@ -52,13 +53,107 @@ export class AiPlanPdfService {
       "cairo-arabic-400-normal.woff",
     );
 
-    this.cachedFontBytes = await fs.readFile(fontPath);
-    return this.cachedFontBytes;
+    this.cachedArabicFontBytes = await fs.readFile(fontPath);
+    return this.cachedArabicFontBytes;
+  }
+
+  private async getLatinFontBytes(): Promise<Uint8Array> {
+    if (this.cachedLatinFontBytes) {
+      return this.cachedLatinFontBytes;
+    }
+
+    const fontPath = path.join(
+      process.cwd(),
+      "node_modules",
+      "@fontsource",
+      "cairo",
+      "files",
+      "cairo-latin-400-normal.woff",
+    );
+
+    this.cachedLatinFontBytes = await fs.readFile(fontPath);
+    return this.cachedLatinFontBytes;
+  }
+
+  private isArabicCharacter(char: string): boolean {
+    return /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(
+      char,
+    );
+  }
+
+  private splitTextRuns(text: string): Array<{ text: string; fontType: "arabic" | "latin" }> {
+    const runs: Array<{ text: string; fontType: "arabic" | "latin" }> = [];
+
+    for (const char of text) {
+      const isWhitespace = /\s/.test(char);
+      const fontType: "arabic" | "latin" = this.isArabicCharacter(char)
+        ? "arabic"
+        : "latin";
+
+      const previousRun = runs[runs.length - 1];
+      if (
+        previousRun &&
+        (previousRun.fontType === fontType || isWhitespace)
+      ) {
+        previousRun.text += char;
+        continue;
+      }
+
+      runs.push({
+        text: char,
+        fontType: previousRun && isWhitespace ? previousRun.fontType : fontType,
+      });
+    }
+
+    return runs;
+  }
+
+  private getPlanTypeLabel(planType: string): string {
+    switch (planType) {
+      case "workout_only":
+        return "تمرين فقط";
+      case "nutrition_only":
+        return "غذاء فقط";
+      case "combined":
+        return "تمرين + غذاء";
+      default:
+        return planType.replace(/_/g, " ");
+    }
+  }
+
+  private getGoalLabel(goal: string): string {
+    const normalizedGoal = goal.trim().toLowerCase();
+
+    switch (normalizedGoal) {
+      case "fat_loss":
+        return "خسارة دهون";
+      case "muscle_gain":
+        return "زيادة كتلة عضلية";
+      case "maintenance":
+        return "ثبات";
+      case "body_recomp":
+        return "إعادة تشكيل الجسم";
+      case "strength":
+        return "زيادة القوة";
+      default:
+        return goal.replace(/_/g, " ");
+    }
+  }
+
+  private getTextWidth(
+    text: string,
+    fonts: { arabic: any; latin: any },
+    fontSize: number,
+  ): number {
+    return this.splitTextRuns(text).reduce((total, run) => {
+      const font = run.fontType === "arabic" ? fonts.arabic : fonts.latin;
+      return total + font.widthOfTextAtSize(run.text, fontSize);
+    }, 0);
   }
 
   private wrapText(
     text: string,
-    font: any,
+    fonts: { arabic: any; latin: any },
     fontSize: number,
     maxWidth: number,
   ): string[] {
@@ -73,7 +168,7 @@ export class AiPlanPdfService {
 
     for (const word of words) {
       const candidate = currentLine ? `${currentLine} ${word}` : word;
-      const candidateWidth = font.widthOfTextAtSize(candidate, fontSize);
+      const candidateWidth = this.getTextWidth(candidate, fonts, fontSize);
 
       if (candidateWidth <= maxWidth || !currentLine) {
         currentLine = candidate;
@@ -95,8 +190,16 @@ export class AiPlanPdfService {
     const pdfDoc = await PDFDocument.create();
     pdfDoc.registerFontkit(fontkit);
 
-    const fontBytes = await this.getFontBytes();
-    const font = await pdfDoc.embedFont(fontBytes, { subset: true });
+    const [arabicFontBytes, latinFontBytes] = await Promise.all([
+      this.getArabicFontBytes(),
+      this.getLatinFontBytes(),
+    ]);
+    const arabicFont = await pdfDoc.embedFont(arabicFontBytes, { subset: true });
+    const latinFont = await pdfDoc.embedFont(latinFontBytes, { subset: true });
+    const fonts = {
+      arabic: arabicFont,
+      latin: latinFont,
+    };
 
     let page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
     let cursorY = PAGE_HEIGHT - TOP_MARGIN;
@@ -117,7 +220,7 @@ export class AiPlanPdfService {
       fontSize = FONT_SIZE_BODY,
       color = rgb(0.1, 0.1, 0.1),
     ) => {
-      const lines = this.wrapText(text, font, fontSize, maxWidth);
+      const lines = this.wrapText(text, fonts, fontSize, maxWidth);
       if (lines.length === 0) {
         return;
       }
@@ -126,13 +229,21 @@ export class AiPlanPdfService {
       ensureSpace(lines.length * lineHeight + 10);
 
       for (const line of lines) {
-        page.drawText(line, {
-          x: MARGIN_X,
-          y: cursorY,
-          size: fontSize,
-          font,
-          color,
-        });
+        const lineWidth = this.getTextWidth(line, fonts, fontSize);
+        let cursorX = PAGE_WIDTH - MARGIN_X - lineWidth;
+
+        for (const run of this.splitTextRuns(line)) {
+          const font = run.fontType === "arabic" ? arabicFont : latinFont;
+          page.drawText(run.text, {
+            x: cursorX,
+            y: cursorY,
+            size: fontSize,
+            font,
+            color,
+          });
+          cursorX += font.widthOfTextAtSize(run.text, fontSize);
+        }
+
         cursorY -= lineHeight;
       }
 
@@ -141,30 +252,48 @@ export class AiPlanPdfService {
 
     const drawSectionTitle = (text: string) => {
       ensureSpace(FONT_SIZE_SECTION + 20);
-      page.drawText(text, {
-        x: MARGIN_X,
-        y: cursorY,
-        size: FONT_SIZE_SECTION,
-        font,
-        color: rgb(0.06, 0.28, 0.63),
-      });
+      const titleWidth = this.getTextWidth(text, fonts, FONT_SIZE_SECTION);
+      let cursorX = PAGE_WIDTH - MARGIN_X - titleWidth;
+
+      for (const run of this.splitTextRuns(text)) {
+        const font = run.fontType === "arabic" ? arabicFont : latinFont;
+        page.drawText(run.text, {
+          x: cursorX,
+          y: cursorY,
+          size: FONT_SIZE_SECTION,
+          font,
+          color: rgb(0.06, 0.28, 0.63),
+        });
+        cursorX += font.widthOfTextAtSize(run.text, FONT_SIZE_SECTION);
+      }
+
       cursorY -= FONT_SIZE_SECTION + 10;
     };
 
-    page.drawText("الخطة المعتمدة", {
-      x: MARGIN_X,
-      y: cursorY,
-      size: FONT_SIZE_TITLE,
-      font,
-      color: rgb(0.03, 0.2, 0.42),
-    });
+    {
+      const title = "الخطة المعتمدة";
+      const titleWidth = this.getTextWidth(title, fonts, FONT_SIZE_TITLE);
+      let cursorX = PAGE_WIDTH - MARGIN_X - titleWidth;
+
+      for (const run of this.splitTextRuns(title)) {
+        const font = run.fontType === "arabic" ? arabicFont : latinFont;
+        page.drawText(run.text, {
+          x: cursorX,
+          y: cursorY,
+          size: FONT_SIZE_TITLE,
+          font,
+          color: rgb(0.03, 0.2, 0.42),
+        });
+        cursorX += font.widthOfTextAtSize(run.text, FONT_SIZE_TITLE);
+      }
+    }
     cursorY -= FONT_SIZE_TITLE + 14;
 
     drawParagraph(`اسم الجيم: ${input.centerName}`);
     drawParagraph(`اسم العضو: ${input.memberName}`);
     drawParagraph(`كود العضو: ${input.memberCode}`);
-    drawParagraph(`نوع الخطة: ${input.planType}`);
-    drawParagraph(`الهدف: ${input.goal}`);
+    drawParagraph(`نوع الخطة: ${this.getPlanTypeLabel(input.planType)}`);
+    drawParagraph(`الهدف: ${this.getGoalLabel(input.goal)}`);
 
     drawSectionTitle("ملخص الخطة");
     drawParagraph(input.payload.summary);
@@ -185,7 +314,7 @@ export class AiPlanPdfService {
         drawParagraph(`${day.dayLabel} - ${day.focus}`);
         for (const exercise of day.exercises) {
           drawParagraph(
-            `• ${exercise.name} | المجموعات: ${exercise.sets} | التكرارات: ${exercise.reps}${exercise.restSeconds ? ` | راحة: ${exercise.restSeconds} ثانية` : ""}`,
+            `- ${exercise.name} | المجموعات: ${exercise.sets} | التكرارات: ${exercise.reps}${exercise.restSeconds ? ` | راحة: ${exercise.restSeconds} ثانية` : ""}`,
             10,
           );
           if (exercise.notes) {
@@ -212,21 +341,21 @@ export class AiPlanPdfService {
     if (input.payload.memberInstructions.length > 0) {
       drawSectionTitle("تعليمات للعضو");
       for (const item of input.payload.memberInstructions) {
-        drawParagraph(`• ${item}`);
+        drawParagraph(`- ${item}`);
       }
     }
 
     if (input.payload.coachNotes.length > 0) {
       drawSectionTitle("ملاحظات الكوتش");
       for (const item of input.payload.coachNotes) {
-        drawParagraph(`• ${item}`);
+        drawParagraph(`- ${item}`);
       }
     }
 
     if (input.payload.warnings.length > 0) {
       drawSectionTitle("تحذيرات");
       for (const item of input.payload.warnings) {
-        drawParagraph(`• ${item}`, FONT_SIZE_BODY, rgb(0.62, 0.15, 0.12));
+        drawParagraph(`- ${item}`, FONT_SIZE_BODY, rgb(0.62, 0.15, 0.12));
       }
     }
 
