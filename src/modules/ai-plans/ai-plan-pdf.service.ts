@@ -4,10 +4,6 @@ import fontkit from "@pdf-lib/fontkit";
 import { PDFDocument, rgb } from "pdf-lib";
 import { IAiPlanPayload } from "./ai-plan.schema";
 import { sanitizeFileNameSegment } from "./ai-plan.util";
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const bidiFactory = require("bidi-js");
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const arabicPersianReshaper = require("arabic-persian-reshaper");
 
 interface IGenerateAiPlanPdfInput {
   planId: number;
@@ -33,7 +29,6 @@ const FONT_SIZE_SECTION = 14;
 export class AiPlanPdfService {
   private cachedArabicFontBytes: Uint8Array | null = null;
   private cachedLatinFontBytes: Uint8Array | null = null;
-  private readonly bidi = bidiFactory();
 
   private getStorageRoot(): string {
     const configured = String(process.env.AI_PLAN_STORAGE_DIR ?? "").trim();
@@ -116,25 +111,17 @@ export class AiPlanPdfService {
   private getVisualTextRuns(
     text: string,
   ): Array<{ text: string; fontType: "arabic" | "latin" }> {
-    return this.splitTextRuns(this.toDisplayText(text));
-  }
-
-  private toDisplayText(text: string): string {
-    const normalized = String(text ?? "");
-    if (!normalized.trim()) {
-      return "";
-    }
-
-    const hasArabic = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]/.test(
-      normalized,
+    const runs = this.splitTextRuns(text);
+    const hasArabic = runs.some((run) => run.fontType === "arabic");
+    const hasLatin = runs.some(
+      (run) => run.fontType === "latin" && /[A-Za-z0-9]/.test(run.text),
     );
-    if (!hasArabic) {
-      return normalized;
+
+    if (hasArabic && hasLatin && runs.length > 1) {
+      return [...runs].reverse();
     }
 
-    const reshaped = arabicPersianReshaper.ArabicShaper.convertArabic(normalized);
-    const embeddingLevels = this.bidi.getEmbeddingLevels(reshaped, "rtl");
-    return this.bidi.getReorderedString(reshaped, embeddingLevels);
+    return runs;
   }
 
   private getPlanTypeLabel(planType: string): string {
