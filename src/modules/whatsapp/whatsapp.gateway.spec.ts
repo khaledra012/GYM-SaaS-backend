@@ -46,18 +46,18 @@ describe("WhatsAppGateway.sendDocument", () => {
     return filePath;
   };
 
-  it("sends the PDF as a document and delivers the caption as a follow-up text", async () => {
+  it("sends intro text first, then sends the PDF as a separate message", async () => {
     const filePath = await createPdfFile();
     const { gateway, socket } = createGateway();
 
     socket.sendMessage
       .mockResolvedValueOnce({
-        key: { id: "doc-msg-1" },
-        message: { documentMessage: { mimetype: "application/pdf" } },
-      })
-      .mockResolvedValueOnce({
         key: { id: "text-msg-1" },
         message: { conversation: "Plan ready" },
+      })
+      .mockResolvedValueOnce({
+        key: { id: "doc-msg-1" },
+        message: { documentMessage: { mimetype: "application/pdf" } },
       });
 
     const promise = gateway.sendDocument(1, "01012345678", {
@@ -73,29 +73,29 @@ describe("WhatsAppGateway.sendDocument", () => {
     expect(socket.sendMessage).toHaveBeenNthCalledWith(
       1,
       "201012345678@s.whatsapp.net",
+      { text: "Plan ready" },
+    );
+    expect(socket.sendMessage).toHaveBeenNthCalledWith(
+      2,
+      "201012345678@s.whatsapp.net",
       {
         document: { url: filePath },
         fileName: "attachment.pdf",
         mimetype: "application/pdf",
       },
     );
-    expect(socket.sendMessage).toHaveBeenNthCalledWith(
-      2,
-      "201012345678@s.whatsapp.net",
-      { text: "Plan ready" },
-    );
   });
 
-  it("does not fail the document delivery when the follow-up text cannot be sent", async () => {
+  it("still sends the PDF when intro text fails", async () => {
     const filePath = await createPdfFile();
     const { gateway, socket } = createGateway();
 
     socket.sendMessage
+      .mockRejectedValueOnce(new Error("text send failed"))
       .mockResolvedValueOnce({
         key: { id: "doc-msg-2" },
         message: { documentMessage: { mimetype: "application/pdf" } },
-      })
-      .mockRejectedValueOnce(new Error("text send failed"));
+      });
 
     const promise = gateway.sendDocument(1, "01012345678", {
       caption: "Plan ready",
