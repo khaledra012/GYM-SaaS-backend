@@ -295,7 +295,7 @@ export class AiPlanPdfService {
       color = rgb(0.1, 0.1, 0.1),
     ) => {
       const normalizedValue = String(value ?? "").trim() || "-";
-      const labelText = `$:{label}`;
+      const labelText = `!${label}`;
       const labelWidth = this.getTextWidth(labelText, fonts, fontSize);
       const labelGap = 8;
       const valueMaxWidth = Math.max(80, maxWidth - labelWidth - labelGap);
