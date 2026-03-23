@@ -108,6 +108,22 @@ export class AiPlanPdfService {
     return runs;
   }
 
+  private getVisualTextRuns(
+    text: string,
+  ): Array<{ text: string; fontType: "arabic" | "latin" }> {
+    const runs = this.splitTextRuns(text);
+    const hasArabic = runs.some((run) => run.fontType === "arabic");
+    const hasLatin = runs.some(
+      (run) => run.fontType === "latin" && /[A-Za-z0-9]/.test(run.text),
+    );
+
+    if (hasArabic && hasLatin && runs.length > 1) {
+      return [...runs].reverse();
+    }
+
+    return runs;
+  }
+
   private getPlanTypeLabel(planType: string): string {
     switch (planType) {
       case "workout_only":
@@ -232,7 +248,7 @@ export class AiPlanPdfService {
         const lineWidth = this.getTextWidth(line, fonts, fontSize);
         let cursorX = PAGE_WIDTH - MARGIN_X - lineWidth;
 
-        for (const run of this.splitTextRuns(line)) {
+        for (const run of this.getVisualTextRuns(line)) {
           const font = run.fontType === "arabic" ? arabicFont : latinFont;
           page.drawText(run.text, {
             x: cursorX,
@@ -255,7 +271,7 @@ export class AiPlanPdfService {
       const titleWidth = this.getTextWidth(text, fonts, FONT_SIZE_SECTION);
       let cursorX = PAGE_WIDTH - MARGIN_X - titleWidth;
 
-      for (const run of this.splitTextRuns(text)) {
+      for (const run of this.getVisualTextRuns(text)) {
         const font = run.fontType === "arabic" ? arabicFont : latinFont;
         page.drawText(run.text, {
           x: cursorX,
@@ -275,7 +291,7 @@ export class AiPlanPdfService {
       const titleWidth = this.getTextWidth(title, fonts, FONT_SIZE_TITLE);
       let cursorX = PAGE_WIDTH - MARGIN_X - titleWidth;
 
-      for (const run of this.splitTextRuns(title)) {
+      for (const run of this.getVisualTextRuns(title)) {
         const font = run.fontType === "arabic" ? arabicFont : latinFont;
         page.drawText(run.text, {
           x: cursorX,
@@ -380,3 +396,4 @@ export class AiPlanPdfService {
 }
 
 export const aiPlanPdfService = new AiPlanPdfService();
+
