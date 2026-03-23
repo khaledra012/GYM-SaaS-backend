@@ -30,7 +30,15 @@ interface ILoadedLibraries {
   qrcode: any;
 }
 
+interface ITrackedDocumentMessage {
+  messageId: string;
+  phone: string;
+  fileName: string;
+  trackedAt: number;
+}
+
 const RECONNECT_DELAY_MS = 10_000;
+const TRACKED_DOCUMENT_TTL_MS = 6 * 60 * 60 * 1000;
 
 const delay = (ms: number) =>
   new Promise<void>((resolve) => {
@@ -49,6 +57,7 @@ const resolveAuthRootDirectory = (): string => {
 export class WhatsAppGateway {
   private runtimes = new Map<number, IWhatsAppGatewayRuntime>();
   private manualDisconnects = new Set<number>();
+  private trackedDocumentMessages = new Map<number, Map<string, ITrackedDocumentMessage>>();
   private libraries: ILoadedLibraries | null = null;
   private readonly authRootDirectory = resolveAuthRootDirectory();
 
@@ -98,6 +107,63 @@ export class WhatsAppGateway {
 
     clearTimeout(runtime.reconnectHandle);
     runtime.reconnectHandle = null;
+  }
+
+  private safeStringify(value: unknown, maxLength = 2000): string | null {
+    try {
+      const json = JSON.stringify(value);
+      if (!json) {
+        return null;
+      }
+
+      return json.length > maxLength ? `${json.slice(0, maxLength)}...` : json;
+    } catch {
+      return null;
+    }
+  }
+
+  private pruneTrackedDocumentMessages(centerId: number) {
+    const scopedMap = this.trackedDocumentMessages.get(centerId);
+    if (!scopedMap || scopedMap.size === 0) {
+      return;
+    }
+
+    const cutoff = Date.now() - TRACKED_DOCUMENT_TTL_MS;
+    for (const [messageId, entry] of scopedMap.entries()) {
+      if (entry.trackedAt < cutoff) {
+        scopedMap.delete(messageId);
+      }
+    }
+
+    if (scopedMap.size === 0) {
+      this.trackedDocumentMessages.delete(centerId);
+    }
+  }
+
+  private trackDocumentMessage(
+    centerId: number,
+    messageId: string,
+    payload: { phone: string; fileName: string },
+  ) {
+    this.pruneTrackedDocumentMessages(centerId);
+
+    const scopedMap =
+      this.trackedDocumentMessages.get(centerId) ??
+      new Map<string, ITrackedDocumentMessage>();
+
+    scopedMap.set(messageId, {
+      messageId,
+      phone: payload.phone,
+      fileName: payload.fileName,
+      trackedAt: Date.now(),
+    });
+
+    this.trackedDocumentMessages.set(centerId, scopedMap);
+  }
+
+  private getTrackedDocumentMessage(centerId: number, messageId: string) {
+    this.pruneTrackedDocumentMessages(centerId);
+    return this.trackedDocumentMessages.get(centerId)?.get(messageId) ?? null;
   }
 
   private async scheduleReconnect(centerId: number) {
@@ -278,6 +344,55 @@ export class WhatsAppGateway {
 
     socket.ev.on("connection.update", (connectionUpdate: any) => {
       void this.handleConnectionUpdate(centerId, connectionUpdate);
+    });
+
+    socket.ev.on("messages.update", (updates: any) => {
+      const normalizedUpdates = Array.isArray(updates) ? updates : [];
+
+      for (const update of normalizedUpdates) {
+        const messageId = String(update?.key?.id ?? "").trim();
+        if (!messageId) {
+          continue;
+        }
+
+        const trackedMessage = this.getTrackedDocumentMessage(centerId, messageId);
+        if (!trackedMessage) {
+          continue;
+        }
+
+        logger.info("WhatsApp document message update received", {
+          centerId,
+          messageId,
+          phone: trackedMessage.phone,
+          fileName: trackedMessage.fileName,
+          status: update?.update?.status ?? update?.status ?? null,
+          payload: this.safeStringify(update),
+        });
+      }
+    });
+
+    socket.ev.on("message-receipt.update", (updates: any) => {
+      const normalizedUpdates = Array.isArray(updates) ? updates : [];
+
+      for (const update of normalizedUpdates) {
+        const messageId = String(update?.key?.id ?? "").trim();
+        if (!messageId) {
+          continue;
+        }
+
+        const trackedMessage = this.getTrackedDocumentMessage(centerId, messageId);
+        if (!trackedMessage) {
+          continue;
+        }
+
+        logger.info("WhatsApp document receipt update received", {
+          centerId,
+          messageId,
+          phone: trackedMessage.phone,
+          fileName: trackedMessage.fileName,
+          payload: this.safeStringify(update),
+        });
+      }
     });
 
     return {
@@ -482,7 +597,29 @@ export class WhatsAppGateway {
       mimetype: input.mimetype,
     });
 
-    if (!this.hasDocumentPayload(response)) {
+    const messageId = String(response?.key?.id ?? "").trim() || null;
+    const hasDocumentPayload = this.hasDocumentPayload(response);
+
+    if (messageId) {
+      this.trackDocumentMessage(centerId, messageId, {
+        phone,
+        fileName: outboundFileName,
+      });
+    }
+
+    logger.info("WhatsApp document send response captured", {
+      centerId,
+      phone,
+      filePath: input.filePath,
+      fileName: outboundFileName,
+      messageId,
+      hasDocumentPayload,
+      responseEnvelopeKeys: response ? Object.keys(response) : [],
+      responseMessageKeys: response?.message ? Object.keys(response.message) : [],
+      responsePreview: this.safeStringify(response),
+    });
+
+    if (!hasDocumentPayload) {
       logger.error("لم يرجع Baileys تأكيداً لإرسال الملف كمستند", {
         centerId,
         fileName: outboundFileName,
@@ -496,7 +633,7 @@ export class WhatsAppGateway {
     }
 
     return {
-      messageId: response?.key?.id ?? null,
+      messageId,
     };
   }
 }
