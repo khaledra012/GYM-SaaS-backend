@@ -569,19 +569,6 @@ export class WhatsAppGateway {
       throw error;
     }
 
-    const caption = String(input.caption ?? "").trim();
-    if (caption) {
-      try {
-        await this.sendText(centerId, phone, caption);
-      } catch (error) {
-        logger.warn("تعذر إرسال الرسالة النصية قبل ملف الخطة وسيتم متابعة إرسال الملف", {
-          centerId,
-          phone,
-          error: String(error),
-        });
-      }
-    }
-
     await runtime.socket.sendPresenceUpdate("available", jid);
     await delay(1_000 + Math.floor(Math.random() * 1_500));
 

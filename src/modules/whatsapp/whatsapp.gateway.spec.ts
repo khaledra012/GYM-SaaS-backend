@@ -46,19 +46,14 @@ describe("WhatsAppGateway.sendDocument", () => {
     return filePath;
   };
 
-  it("sends intro text first, then sends the PDF as a separate message", async () => {
+  it("sends the PDF as a document message", async () => {
     const filePath = await createPdfFile();
     const { gateway, socket } = createGateway();
 
-    socket.sendMessage
-      .mockResolvedValueOnce({
-        key: { id: "text-msg-1" },
-        message: { conversation: "Plan ready" },
-      })
-      .mockResolvedValueOnce({
-        key: { id: "doc-msg-1" },
-        message: { documentMessage: { mimetype: "application/pdf" } },
-      });
+    socket.sendMessage.mockResolvedValueOnce({
+      key: { id: "doc-msg-1" },
+      message: { documentMessage: { mimetype: "application/pdf" } },
+    });
 
     const promise = gateway.sendDocument(1, "01012345678", {
       caption: "Plan ready",
@@ -73,29 +68,23 @@ describe("WhatsAppGateway.sendDocument", () => {
     expect(socket.sendMessage).toHaveBeenNthCalledWith(
       1,
       "201012345678@s.whatsapp.net",
-      { text: "Plan ready" },
-    );
-    expect(socket.sendMessage).toHaveBeenNthCalledWith(
-      2,
-      "201012345678@s.whatsapp.net",
       {
         document: { url: filePath },
         fileName: "attachment.pdf",
         mimetype: "application/pdf",
       },
     );
+    expect(socket.sendMessage).toHaveBeenCalledTimes(1);
   });
 
-  it("still sends the PDF when intro text fails", async () => {
+  it("fails when WhatsApp response does not include a document payload", async () => {
     const filePath = await createPdfFile();
     const { gateway, socket } = createGateway();
 
-    socket.sendMessage
-      .mockRejectedValueOnce(new Error("text send failed"))
-      .mockResolvedValueOnce({
-        key: { id: "doc-msg-2" },
-        message: { documentMessage: { mimetype: "application/pdf" } },
-      });
+    socket.sendMessage.mockResolvedValueOnce({
+      key: { id: "doc-msg-2" },
+      message: { conversation: "text only" },
+    });
 
     const promise = gateway.sendDocument(1, "01012345678", {
       caption: "Plan ready",
@@ -104,6 +93,6 @@ describe("WhatsAppGateway.sendDocument", () => {
       mimetype: "application/pdf",
     });
 
-    await expect(promise).resolves.toEqual({ messageId: "doc-msg-2" });
+    await expect(promise).rejects.toMatchObject({ code: "document_not_sent" });
   });
 });

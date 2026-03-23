@@ -166,10 +166,46 @@ class WhatsAppCommandFacade {
     ]);
 
     if (!center || !member) {
-      return { queued: false, reason: "تعذر تجهيز بيانات خطة العضو للإرسال", message: null };
+      return {
+        queued: false,
+        reason: "تعذر تجهيز بيانات خطة العضو للإرسال",
+        message: null,
+      };
     }
 
-    return whatsAppService.queueDocumentMessage({
+    const textDedupeKey = `${input.dedupeKey}:text`;
+    const documentDedupeKey = `${input.dedupeKey}:document`;
+
+    const textMessageResult = await whatsAppService.queueTemplateMessage({
+      centerId: input.centerId,
+      eventType: "ai_plan_pdf",
+      memberId: member.id,
+      phone: member.phone,
+      requireOptIn: false,
+      dedupeKey: textDedupeKey,
+      variables: {
+        name: member.name,
+        gym_name: center.name,
+      },
+      templateBody:
+        "أهلاً {{name}}، تم تجهيز خطتك الجديدة واعتمادها من الكوتش في {{gym_name}}. سيتم إرسال ملف PDF في رسالة منفصلة الآن.",
+      metadata: {
+        source: "ai_plan_approved",
+        aiPlanMessageKind: "text",
+      },
+    });
+
+    if (!textMessageResult.queued && !textMessageResult.alreadyQueued) {
+      return {
+        queued: false,
+        reason:
+          textMessageResult.reason ??
+          "تعذر تجهيز رسالة التنبيه النصية الخاصة بخطة العضو",
+        message: null,
+      };
+    }
+
+    const documentMessageResult = await whatsAppService.queueDocumentMessage({
       centerId: input.centerId,
       eventType: "ai_plan_pdf",
       memberId: member.id,
@@ -178,17 +214,38 @@ class WhatsAppCommandFacade {
       fileName: input.fileName,
       mimetype: "application/pdf",
       requireOptIn: false,
-      dedupeKey: input.dedupeKey,
+      dedupeKey: documentDedupeKey,
       variables: {
         name: member.name,
         gym_name: center.name,
       },
+      templateBody: "ملف الخطة المرفق.",
       metadata: {
         source: "ai_plan_approved",
+        aiPlanMessageKind: "document",
       },
     });
-  }
 
+    logger.info("AI plan WhatsApp queue result", {
+      centerId: input.centerId,
+      memberId: member.id,
+      phone: member.phone,
+      text: {
+        dedupeKey: textDedupeKey,
+        queued: textMessageResult.queued,
+        alreadyQueued: textMessageResult.alreadyQueued ?? false,
+        messageId: (textMessageResult as any)?.message?.id ?? null,
+      },
+      document: {
+        dedupeKey: documentDedupeKey,
+        queued: documentMessageResult.queued,
+        alreadyQueued: documentMessageResult.alreadyQueued ?? false,
+        messageId: (documentMessageResult as any)?.message?.id ?? null,
+      },
+    });
+
+    return documentMessageResult;
+  }
   public async runSubscriptionExpirySweep() {
     const centerIds = await authReadFacade.getAllCenterIds();
 

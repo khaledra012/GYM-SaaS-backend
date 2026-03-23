@@ -1841,8 +1841,7 @@ class WhatsAppService {
       | undefined;
 
     try {
-      const requiresDocument =
-        message.eventType === "ai_plan_pdf" || attachment?.type === "document";
+      const requiresDocument = attachment?.type === "document";
       const documentAttachment = requiresDocument
         ? (attachment as {
             type?: string;
