@@ -4,6 +4,10 @@ import fontkit from "@pdf-lib/fontkit";
 import { PDFDocument, rgb } from "pdf-lib";
 import { IAiPlanPayload } from "./ai-plan.schema";
 import { sanitizeFileNameSegment } from "./ai-plan.util";
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const bidiFactory = require("bidi-js");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const arabicPersianReshaper = require("arabic-persian-reshaper");
 
 interface IGenerateAiPlanPdfInput {
   planId: number;
@@ -29,6 +33,7 @@ const FONT_SIZE_SECTION = 14;
 export class AiPlanPdfService {
   private cachedArabicFontBytes: Uint8Array | null = null;
   private cachedLatinFontBytes: Uint8Array | null = null;
+  private readonly bidi = bidiFactory();
 
   private getStorageRoot(): string {
     const configured = String(process.env.AI_PLAN_STORAGE_DIR ?? "").trim();
@@ -111,17 +116,25 @@ export class AiPlanPdfService {
   private getVisualTextRuns(
     text: string,
   ): Array<{ text: string; fontType: "arabic" | "latin" }> {
-    const runs = this.splitTextRuns(text);
-    const hasArabic = runs.some((run) => run.fontType === "arabic");
-    const hasLatin = runs.some(
-      (run) => run.fontType === "latin" && /[A-Za-z0-9]/.test(run.text),
-    );
+    return this.splitTextRuns(this.toDisplayText(text));
+  }
 
-    if (hasArabic && hasLatin && runs.length > 1) {
-      return [...runs].reverse();
+  private toDisplayText(text: string): string {
+    const normalized = String(text ?? "");
+    if (!normalized.trim()) {
+      return "";
     }
 
-    return runs;
+    const hasArabic = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]/.test(
+      normalized,
+    );
+    if (!hasArabic) {
+      return normalized;
+    }
+
+    const reshaped = arabicPersianReshaper.ArabicShaper.convertArabic(normalized);
+    const embeddingLevels = this.bidi.getEmbeddingLevels(reshaped, "rtl");
+    return this.bidi.getReorderedString(reshaped, embeddingLevels);
   }
 
   private getPlanTypeLabel(planType: string): string {
@@ -161,7 +174,7 @@ export class AiPlanPdfService {
     fonts: { arabic: any; latin: any },
     fontSize: number,
   ): number {
-    return this.splitTextRuns(text).reduce((total, run) => {
+    return this.getVisualTextRuns(text).reduce((total, run) => {
       const font = run.fontType === "arabic" ? fonts.arabic : fonts.latin;
       return total + font.widthOfTextAtSize(run.text, fontSize);
     }, 0);
@@ -309,7 +322,7 @@ export class AiPlanPdfService {
       color = rgb(0.1, 0.1, 0.1),
     ) => {
       const normalizedValue = String(value ?? "").trim() || "-";
-      const labelText = `:${label}`;
+      const labelText = `${label}:`;
       const labelWidth = this.getTextWidth(labelText, fonts, fontSize);
       const labelGap = 8;
       const valueMaxWidth = Math.max(80, maxWidth - labelWidth - labelGap);
