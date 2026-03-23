@@ -173,7 +173,10 @@ export class AiPlanPdfService {
     fontSize: number,
     maxWidth: number,
   ): string[] {
-    const normalizedText = text.trim();
+    const normalizedText = text
+      .replace(/\s+/g, " ")
+      .replace(/\s+([،؛:,.!?])/g, "$1")
+      .trim();
     if (!normalizedText) {
       return [];
     }
@@ -182,7 +185,18 @@ export class AiPlanPdfService {
     const lines: string[] = [];
     let currentLine = "";
 
-    for (const word of words) {
+    for (let word of words) {
+      const leadingPunctuationMatch = word.match(/^([،؛:,.!?]+)(.+)$/u);
+      if (leadingPunctuationMatch && currentLine) {
+        currentLine += leadingPunctuationMatch[1];
+        word = leadingPunctuationMatch[2];
+      }
+
+      if (/^[،؛:,.!?]+$/u.test(word) && currentLine) {
+        currentLine += word;
+        continue;
+      }
+
       const candidate = currentLine ? `${currentLine} ${word}` : word;
       const candidateWidth = this.getTextWidth(candidate, fonts, fontSize);
 
@@ -456,4 +470,3 @@ export class AiPlanPdfService {
 }
 
 export const aiPlanPdfService = new AiPlanPdfService();
-
