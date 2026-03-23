@@ -362,7 +362,7 @@ export class AiPlanPdfService {
     }
     cursorY -= FONT_SIZE_TITLE + 14;
 
-    drawLabeledValue("اسم الجيم", input.centerName);
+    drawLabeledValue(":اسم الجيم", input.centerName);
     drawLabeledValue("اسم العضو", input.memberName);
     drawLabeledValue("كود العضو", input.memberCode);
     drawLabeledValue("نوع الخطة", this.getPlanTypeLabel(input.planType));
