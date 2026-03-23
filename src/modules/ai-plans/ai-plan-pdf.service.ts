@@ -266,6 +266,63 @@ export class AiPlanPdfService {
       cursorY -= 4;
     };
 
+    const drawTextRuns = (
+      text: string,
+      startX: number,
+      y: number,
+      fontSize: number,
+      color = rgb(0.1, 0.1, 0.1),
+    ) => {
+      let cursorX = startX;
+
+      for (const run of this.getVisualTextRuns(text)) {
+        const font = run.fontType === "arabic" ? arabicFont : latinFont;
+        page.drawText(run.text, {
+          x: cursorX,
+          y,
+          size: fontSize,
+          font,
+          color,
+        });
+        cursorX += font.widthOfTextAtSize(run.text, fontSize);
+      }
+    };
+
+    const drawLabeledValue = (
+      label: string,
+      value: string,
+      fontSize = FONT_SIZE_BODY,
+      color = rgb(0.1, 0.1, 0.1),
+    ) => {
+      const normalizedValue = String(value ?? "").trim() || "-";
+      const labelText = `${label}:`;
+      const labelWidth = this.getTextWidth(labelText, fonts, fontSize);
+      const labelGap = 8;
+      const valueMaxWidth = Math.max(80, maxWidth - labelWidth - labelGap);
+      const valueLines = this.wrapText(
+        normalizedValue,
+        fonts,
+        fontSize,
+        valueMaxWidth,
+      );
+      const lines = valueLines.length > 0 ? valueLines : ["-"];
+      const lineHeight = fontSize + LINE_GAP;
+
+      ensureSpace(lines.length * lineHeight + 10);
+
+      const labelX = PAGE_WIDTH - MARGIN_X - labelWidth;
+      drawTextRuns(labelText, labelX, cursorY, fontSize, color);
+
+      for (const line of lines) {
+        const lineWidth = this.getTextWidth(line, fonts, fontSize);
+        const valueX = labelX - labelGap - lineWidth;
+        drawTextRuns(line, valueX, cursorY, fontSize, color);
+        cursorY -= lineHeight;
+      }
+
+      cursorY -= 4;
+    };
+
     const drawSectionTitle = (text: string) => {
       ensureSpace(FONT_SIZE_SECTION + 20);
       const titleWidth = this.getTextWidth(text, fonts, FONT_SIZE_SECTION);
@@ -305,18 +362,21 @@ export class AiPlanPdfService {
     }
     cursorY -= FONT_SIZE_TITLE + 14;
 
-    drawParagraph(`اسم الجيم: ${input.centerName}`);
-    drawParagraph(`اسم العضو: ${input.memberName}`);
-    drawParagraph(`كود العضو: ${input.memberCode}`);
-    drawParagraph(`نوع الخطة: ${this.getPlanTypeLabel(input.planType)}`);
-    drawParagraph(`الهدف: ${this.getGoalLabel(input.goal)}`);
+    drawLabeledValue("اسم الجيم", input.centerName);
+    drawLabeledValue("اسم العضو", input.memberName);
+    drawLabeledValue("كود العضو", input.memberCode);
+    drawLabeledValue("نوع الخطة", this.getPlanTypeLabel(input.planType));
+    drawLabeledValue("الهدف", this.getGoalLabel(input.goal));
 
     drawSectionTitle("ملخص الخطة");
     drawParagraph(input.payload.summary);
 
     if (input.payload.dailyCalories !== null && input.payload.dailyCalories !== undefined) {
       drawSectionTitle("السعرات والمغذيات");
-      drawParagraph(`السعرات اليومية المقترحة: ${input.payload.dailyCalories}`);
+      drawLabeledValue(
+        "السعرات اليومية المقترحة",
+        String(input.payload.dailyCalories),
+      );
       if (input.payload.macros) {
         drawParagraph(
           `بروتين: ${input.payload.macros.proteinGrams} جم - كارب: ${input.payload.macros.carbsGrams} جم - دهون: ${input.payload.macros.fatsGrams} جم`,
