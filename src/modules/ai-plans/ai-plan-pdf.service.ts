@@ -86,69 +86,42 @@ export class AiPlanPdfService {
     );
   }
 
+  // kept for potential future use
   private isLatinLetter(char: string): boolean {
     return /[A-Za-z]/.test(char);
   }
 
   /**
    * Splits text into logical runs of Arabic vs Latin script.
-   *
-   * Neutral characters (digits, punctuation, spaces, pipe, dash, colon, etc.)
-   * inherit the script of the surrounding strong characters.  When inside an
-   * Arabic sentence they stay with the Arabic run so they render in the correct
-   * visual position for RTL text instead of flipping to the wrong side.
-   *
-   * Algorithm:
-   *   1. Tag every character as "arabic", "latin", or "neutral".
-   *   2. Forward-propagate: a neutral char takes the type of the last seen
-   *      strong char (defaulting to "arabic" when the text contains arabic).
-   *   3. Merge consecutive same-type chars into a single run.
+   * Arabic characters → Arabic font.
+   * Everything else (digits, punctuation, symbols, spaces, Latin letters) → Latin font,
+   * because the Arabic-subset woff does NOT contain glyphs for `:`, `+`, `-`, `|`, etc.
    */
   private splitTextRuns(
     text: string,
   ): Array<{ text: string; fontType: "arabic" | "latin" }> {
-    type StrongType = "arabic" | "latin";
-    const chars = [...text];
-    const rawTypes: ("arabic" | "latin" | "neutral")[] = chars.map((ch) => {
-      if (this.isArabicCharacter(ch)) return "arabic";
-      if (this.isLatinLetter(ch)) return "latin";
-      return "neutral";
-    });
-
-    const hasArabic = rawTypes.some((t) => t === "arabic");
-    const defaultStrong: StrongType = hasArabic ? "arabic" : "latin";
-
-    // Forward pass: assign neutral chars to the preceding strong type
-    let lastStrong: StrongType = defaultStrong;
-    const resolved: StrongType[] = rawTypes.map((t) => {
-      if (t !== "neutral") {
-        lastStrong = t;
-        return t;
-      }
-      return lastStrong;
-    });
-
-    // Merge into runs
-    const runs: Array<{ text: string; fontType: StrongType }> = [];
-    for (let i = 0; i < chars.length; i++) {
-      const type = resolved[i];
+    const runs: Array<{ text: string; fontType: "arabic" | "latin" }> = [];
+    for (const char of text) {
+      const fontType: "arabic" | "latin" = this.isArabicCharacter(char)
+        ? "arabic"
+        : "latin";
       const prev = runs[runs.length - 1];
-      if (prev && prev.fontType === type) {
-        prev.text += chars[i];
+      if (prev && prev.fontType === fontType) {
+        prev.text += char;
       } else {
-        runs.push({ text: chars[i], fontType: type });
+        runs.push({ text: char, fontType });
       }
     }
-
     return runs;
   }
 
   /**
    * Returns runs in visual (left-to-right canvas drawing) order.
    *
-   * For RTL-dominant text (has Arabic) we reverse the run order so the
-   * rightmost logical run is drawn first (at the highest x position).
-   * Within each run the Cairo font already handles RTL glyph shaping.
+   * For RTL text (any Arabic present) we reverse the run order so the
+   * rightmost logical run is drawn first from the right anchor.
+   * This fixes cases like `اسم الجيم:` and `تمرين + غذاء` where the original
+   * code only reversed when BOTH Arabic letters AND Latin letters were present.
    */
   private getVisualTextRuns(
     text: string,
@@ -156,6 +129,7 @@ export class AiPlanPdfService {
     const runs = this.splitTextRuns(text);
     const hasArabic = runs.some((r) => r.fontType === "arabic");
 
+    // Reverse whenever Arabic is present — not just for mixed Arabic+Latin
     if (hasArabic) {
       return [...runs].reverse();
     }
