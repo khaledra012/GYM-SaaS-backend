@@ -388,6 +388,11 @@ class AiPlanService {
     }
 
     const pdfPath = await this.ensurePdfPath(plan, center.name, member.name, member.code);
+    const pdfStats = await fs.stat(pdfPath).catch(() => null);
+    if (!pdfStats?.isFile() || pdfStats.size <= 0) {
+      throw new AppError("ملف PDF الخاص بالخطة غير صالح للإرسال عبر واتساب", 400);
+    }
+
     const dedupeKey = `ai-plan-pdf:${plan.id}:${Date.now()}`;
     const result = await whatsAppCommandFacade.queueAiPlanPdfMessage({
       centerId,

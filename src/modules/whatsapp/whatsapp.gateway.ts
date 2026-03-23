@@ -341,13 +341,13 @@ export class WhatsAppGateway {
     }
 
     if (!runtime?.socket) {
-      const error = new Error("Ø¬Ù„Ø³Ø© Ø§Ù„ÙˆØ§ØªØ³Ø§Ø¨ ØºÙŠØ± Ù…ØªØ§Ø­Ø© Ø­Ø§Ù„ÙŠÙ‹Ø§");
+      const error = new Error("Ø¬Ù„Ø³Ø© Ø§Ù„ÙˆØ§ØªØ³Ø§Ø¨ ØºÙŠØ± Ù…ØªØ§Ø­Ø© Ø­Ø§Ù„ÙŠØ§Ù‹");
       (error as any).code = "session_unavailable";
       throw error;
     }
 
     if (!runtime.socket.user) {
-      const error = new Error("Ø§Ù„Ø¬Ù„Ø³Ø© ØºÙŠØ± Ù…ØªØµÙ„Ø© Ø­Ø§Ù„ÙŠÙ‹Ø§");
+      const error = new Error("Ø§Ù„Ø¬Ù„Ø³Ø© ØºÙŠØ± Ù…ØªØµÙ„Ø© Ø­Ø§Ù„ÙŠØ§Ù‹");
       (error as any).code = "session_unavailable";
       throw error;
     }
@@ -371,6 +371,38 @@ export class WhatsAppGateway {
     };
   }
 
+  private buildOutboundDocumentFileName(
+    fileName: string,
+    mimetype: string,
+  ): string {
+    const trimmedName = String(fileName ?? "").trim();
+    const fallbackExtension = mimetype === "application/pdf" ? ".pdf" : "";
+    const rawExtension = path.extname(trimmedName);
+    const extension = rawExtension || fallbackExtension;
+    const baseName = trimmedName
+      ? path.basename(trimmedName, rawExtension)
+      : "attachment";
+
+    const safeBaseName = baseName
+      .normalize("NFKD")
+      .replace(/[^\x20-\x7E]/g, "-")
+      .replace(/[^A-Za-z0-9._-]+/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 80);
+
+    return `${safeBaseName || "attachment"}${extension}`;
+  }
+
+  private hasDocumentPayload(response: any): boolean {
+    const responseMessage = response?.message;
+
+    return Boolean(
+      responseMessage?.documentMessage ||
+        responseMessage?.documentWithCaptionMessage,
+    );
+  }
+
   public async sendDocument(
     centerId: number,
     phone: string,
@@ -388,36 +420,36 @@ export class WhatsAppGateway {
     }
 
     if (!runtime?.socket) {
-      const error = new Error("ÌáÓÉ ÇáæÇÊÓÇÈ ÛíÑ ãÊÇÍÉ ÍÇáíÇğ");
+      const error = new Error("Ø¬Ù„Ø³Ø© Ø§Ù„ÙˆØ§ØªØ³Ø§Ø¨ ØºÙŠØ± Ù…ØªØ§Ø­Ø© Ø­Ø§Ù„ÙŠØ§Ù‹");
       (error as any).code = "session_unavailable";
       throw error;
     }
 
     if (!runtime.socket.user) {
-      const error = new Error("ÇáÌáÓÉ ÛíÑ ãÊÕáÉ ÍÇáíÇğ");
+      const error = new Error("Ø§Ù„Ø¬Ù„Ø³Ø© ØºÙŠØ± Ù…ØªØµÙ„Ø© Ø­Ø§Ù„ÙŠØ§Ù‹");
       (error as any).code = "session_unavailable";
       throw error;
     }
 
     const jid = toWhatsAppJid(phone);
     if (!jid) {
-      const error = new Error("ÑŞã ÇáåÇÊİ ÛíÑ ÕÇáÍ ááÅÑÓÇá");
+      const error = new Error("Ø±Ù‚Ù… Ø§Ù„Ù‡Ø§ØªÙ ØºÙŠØ± ØµØ§Ù„Ø­ Ù„Ù„Ø¥Ø±Ø³Ø§Ù„");
       (error as any).code = "invalid_phone";
       throw error;
     }
 
-    let fileBuffer: Buffer;
+    let fileStats: Awaited<ReturnType<typeof fs.stat>>;
 
     try {
-      fileBuffer = await fs.readFile(input.filePath);
+      fileStats = await fs.stat(input.filePath);
     } catch {
-      const error = new Error("ãáİ ÇáÎØÉ ÇáãØáæÈ ÅÑÓÇáå ÛíÑ ãæÌæÏ");
+      const error = new Error("Ù…Ù„Ù Ø§Ù„Ø®Ø·Ø© Ø§Ù„Ù…Ø·Ù„ÙˆØ¨ Ø¥Ø±Ø³Ø§Ù„Ù‡ ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯");
       (error as any).code = "attachment_missing";
       throw error;
     }
 
-    if (!fileBuffer.length) {
-      const error = new Error("ãáİ ÇáÎØÉ İÇÑÛ æáÇ íãßä ÅÑÓÇáå");
+    if (!fileStats.isFile() || fileStats.size <= 0) {
+      const error = new Error("Ù…Ù„Ù Ø§Ù„Ø®Ø·Ø© ÙØ§Ø±Øº ÙˆÙ„Ø§ ÙŠÙ…ÙƒÙ† Ø¥Ø±Ø³Ø§Ù„Ù‡");
       (error as any).code = "attachment_missing";
       throw error;
     }
@@ -425,30 +457,43 @@ export class WhatsAppGateway {
     await runtime.socket.sendPresenceUpdate("available", jid);
     await delay(1_000 + Math.floor(Math.random() * 1_500));
 
+    const outboundFileName = this.buildOutboundDocumentFileName(
+      input.fileName,
+      input.mimetype,
+    );
     const response = await runtime.socket.sendMessage(jid, {
-      document: fileBuffer,
-      caption: input.caption,
-      fileName: input.fileName,
+      document: {
+        url: input.filePath,
+      },
+      fileName: outboundFileName,
       mimetype: input.mimetype,
     });
 
-    const responseMessage = response?.message;
-    const hasDocumentPayload = Boolean(
-      responseMessage?.documentMessage ||
-        responseMessage?.documentWithCaptionMessage,
-    );
-
-    if (!hasDocumentPayload) {
-      logger.error("áã íÑÌÚ Baileys ÊÃßíÏÇğ áÅÑÓÇá Çáãáİ ßãÓÊäÏ", {
+    if (!this.hasDocumentPayload(response)) {
+      logger.error("Ù„Ù… ÙŠØ±Ø¬Ø¹ Baileys ØªØ£ÙƒÙŠØ¯Ø§Ù‹ Ù„Ø¥Ø±Ø³Ø§Ù„ Ø§Ù„Ù…Ù„Ù ÙƒÙ…Ø³ØªÙ†Ø¯", {
         centerId,
-        fileName: input.fileName,
+        fileName: outboundFileName,
         filePath: input.filePath,
-        responseKeys: responseMessage ? Object.keys(responseMessage) : [],
+        responseKeys: response?.message ? Object.keys(response.message) : [],
       });
 
-      const error = new Error("ÊÚĞÑ ÅÑÓÇá ãáİ ÇáÎØÉ ßãÓÊäÏ ÚÈÑ æÇÊÓÇÈ");
+      const error = new Error("ØªØ¹Ø°Ø± Ø¥Ø±Ø³Ø§Ù„ Ù…Ù„Ù Ø§Ù„Ø®Ø·Ø© ÙƒÙ…Ø³ØªÙ†Ø¯ Ø¹Ø¨Ø± ÙˆØ§ØªØ³Ø§Ø¨");
       (error as any).code = "document_not_sent";
       throw error;
+    }
+
+    const caption = String(input.caption ?? "").trim();
+    if (caption) {
+      try {
+        await this.sendText(centerId, phone, caption);
+      } catch (error) {
+        logger.warn("ØªÙ… Ø¥Ø±Ø³Ø§Ù„ Ù…Ù„Ù Ø§Ù„Ø®Ø·Ø© Ù„ÙƒÙ† ØªØ¹Ø°Ø± Ø¥Ø±Ø³Ø§Ù„ Ø§Ù„Ø±Ø³Ø§Ù„Ø© Ø§Ù„Ù†ØµÙŠØ© Ø§Ù„ØªØ§Ø¨Ø¹Ø© Ù„Ù‡", {
+          centerId,
+          phone,
+          fileName: outboundFileName,
+          error: String(error),
+        });
+      }
     }
 
     return {
